@@ -1,0 +1,5 @@
+{
+  "name": "Testing Center & Prompt Debugger",
+  "description": "A testing center dashboard featuring a new Prompt Debugging tool powered by Gemini 2.5.",
+  "requestFramePermissions": []
+}
