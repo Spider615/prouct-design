@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Tab } from './types';
 import TestingList from './components/TestingList';
 import PromptDebugger from './components/PromptDebugger';
+import TaskList from './components/TaskList';
 import { LayoutList, ClipboardList, BarChart2, TerminalSquare, Plus } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -14,14 +15,7 @@ const App: React.FC = () => {
       case Tab.PROMPT_DEBUG:
         return <PromptDebugger />;
       case Tab.TASK_LIST:
-        return (
-          <div className="flex items-center justify-center h-full text-gray-400">
-            <div className="text-center">
-              <ClipboardList size={48} className="mx-auto mb-4 opacity-20" />
-              <p>Task List Module Placeholder</p>
-            </div>
-          </div>
-        );
+        return <TaskList />;
       case Tab.TEST_EVALUATION:
         return (
             <div className="flex items-center justify-center h-full text-gray-400">
@@ -51,10 +45,7 @@ const App: React.FC = () => {
              
              {/* Only show 'New Test Set' on relevant tabs to match usual UX, 
                  but keeping it generally visible as per screenshot's layout suggestion */}
-             <button className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-1.5 px-4 rounded shadow-sm transition-colors flex items-center gap-2">
-               <Plus size={16} />
-               新建测试集
-             </button>
+             
           </div>
 
           {/* Bottom Row: Tabs */}
@@ -103,7 +94,7 @@ const App: React.FC = () => {
               }`}
             >
               <TerminalSquare size={16} />
-              Prompt调试
+              单点调试
               <span className="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">NEW</span>
             </button>
           </nav>

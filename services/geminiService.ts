@@ -1,10 +1,7 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { GeminiModel } from "../types";
 
-const apiKey = process.env.API_KEY;
-// Initialize with API Key directly as per instructions.
-// The app assumes process.env.API_KEY is available.
-const ai = new GoogleGenAI({ apiKey: apiKey });
+const apiKey = import.meta.env.VITE_API_KEY;
 
 export interface GenerationConfig {
   temperature?: number;
@@ -20,6 +17,10 @@ export const generateContentStream = async (
   generationConfig?: GenerationConfig
 ) => {
   try {
+    if (!apiKey) {
+      throw new Error("Missing VITE_API_KEY in environment");
+    }
+    const ai = new GoogleGenAI({ apiKey });
     const config: any = {};
     if (systemInstruction) {
       config.systemInstruction = systemInstruction;

@@ -31,9 +31,15 @@ const INITIAL_DATA: DebuggerItem[] = [
   { id: '4', name: '通用摘要提取', version: 'v1.0.1', node: 'Summarization', updatedAt: '2023-10-18' },
 ];
 
+interface DebuggerConfig {
+  id: string;
+  name: string;
+  model: GeminiModel;
+}
+
 const PromptDebugger: React.FC = () => {
   // Navigation State
-  const [view, setView] = useState<'LIST' | 'DEBUG'>('LIST');
+  const [view, setView] = useState<'LIST' | 'DEBUGGER_LIST' | 'DEBUG'>('LIST');
   const [items, setItems] = useState<DebuggerItem[]>(INITIAL_DATA);
   const [activeItem, setActiveItem] = useState<DebuggerItem | null>(null);
 
@@ -55,26 +61,30 @@ const PromptDebugger: React.FC = () => {
   const [topP, setTopP] = useState<number>(0.95);
   const [jsonFormatEnabled, setJsonFormatEnabled] = useState(false);
   const [jsonParams, setJsonParams] = useState<InputParam[]>([]);
+  const [debuggers, setDebuggers] = useState<DebuggerConfig[]>([]);
+  const [editingDebuggerId, setEditingDebuggerId] = useState<string | null>(null);
+  const [selectedDebuggerIds, setSelectedDebuggerIds] = useState<string[]>([]);
+  const [pendingAction, setPendingAction] = useState<null | { type: 'single'; dbg: DebuggerConfig } | { type: 'compare' }>(null);
+  const [taskName, setTaskName] = useState('');
+  const [rounds, setRounds] = useState<number>(1);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [createSource, setCreateSource] = useState<'MANUAL' | 'IMPORT'>('MANUAL');
+  const [createName, setCreateName] = useState('');
+  const [createVersion, setCreateVersion] = useState('');
+  const [createNode, setCreateNode] = useState('');
+  const versionOptions = ['v1.0.0', 'v1.2.0', 'v2.0.0'];
+  const nodeOptions = ['Intent-Analysis', 'Style-Transfer', 'Code-Block', 'Summarization'];
   
   const isCancelledRef = useRef(false);
 
   // --- Actions ---
-  const handleEnterDebug = (item: DebuggerItem) => {
+  const handleEnterDebuggerList = (item: DebuggerItem) => {
     setActiveItem(item);
-    // Reset or load initial state for this item
-    setSystemInstruction(`You are the ${item.name}.`);
-    // Reset new fields
-    setDebugMode('SINGLE');
-    setAddMethod('MANUAL');
-    setInputParams([{ id: Date.now().toString(), name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' }]);
-    setKbName('');
-    setToolCallCount(0);
-    setTemperature(0.7);
-    setTopP(0.95);
-    setJsonFormatEnabled(false);
-    setJsonParams([]);
-    
-    setView('DEBUG');
+    setDebuggers([
+      { id: 'd1', name: '默认调试器A', model: GeminiModel.FLASH },
+      { id: 'd2', name: '高阶调试器B', model: GeminiModel.PRO },
+    ]);
+    setView('DEBUGGER_LIST');
   };
 
   const handleDelete = (id: string) => {
@@ -88,11 +98,15 @@ const PromptDebugger: React.FC = () => {
     setActiveItem(null);
   };
 
-  const handleRun = async () => {
+  const handleBackToDebuggerList = () => {
+    setView('DEBUGGER_LIST');
+  };
+
+  const handleRun = async (options?: { append?: boolean }) => {
     if (!userPrompt.trim()) return;
 
     setIsGenerating(true);
-    setResponse('');
+    if (!options?.append) setResponse('');
     isCancelledRef.current = false;
 
     try {
@@ -127,6 +141,97 @@ const PromptDebugger: React.FC = () => {
     navigator.clipboard.writeText(response);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const modelLabel = (m: GeminiModel) => {
+    if (m === GeminiModel.FLASH) return 'Gemini 2.5 Flash';
+    if (m === GeminiModel.PRO) return 'Gemini 3 Pro (Preview)';
+    return m;
+  };
+
+  const enterEdit = (item: DebuggerItem, m?: GeminiModel, mode?: 'SINGLE' | 'CONTRAST') => {
+    setActiveItem(item);
+    setSystemInstruction(`You are the ${item.name}.`);
+    setDebugMode(mode ?? 'SINGLE');
+    setAddMethod('MANUAL');
+    setInputParams([{ id: Date.now().toString(), name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' }]);
+    setKbName('');
+    setToolCallCount(0);
+    setTemperature(0.7);
+    setTopP(0.95);
+    setJsonFormatEnabled(false);
+    setJsonParams([]);
+    if (m) setModel(m);
+    setView('DEBUG');
+  };
+
+  const editDebugger = (dbg: DebuggerConfig) => {
+    if (!activeItem) return;
+    enterEdit(activeItem, dbg.model, 'SINGLE');
+  };
+
+  const startDebugger = (dbg: DebuggerConfig) => {
+    setPendingAction({ type: 'single', dbg });
+    setTaskName('');
+    setRounds(1);
+  };
+
+  const toggleSelectDebugger = (id: string) => {
+    setSelectedDebuggerIds(prev => (
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    ));
+  };
+
+  const isAllSelected = debuggers.length > 0 && selectedDebuggerIds.length === debuggers.length;
+
+  const toggleSelectAll = () => {
+    setSelectedDebuggerIds(prev => (isAllSelected ? [] : debuggers.map(d => d.id)));
+  };
+
+  const batchDelete = () => {
+    if (selectedDebuggerIds.length === 0) return;
+    setDebuggers(prev => prev.filter(d => !selectedDebuggerIds.includes(d.id)));
+    setSelectedDebuggerIds([]);
+  };
+
+  const compareDebuggers = () => {
+    if (selectedDebuggerIds.length < 2) return;
+    setPendingAction({ type: 'compare' });
+    setTaskName('');
+    setRounds(1);
+  };
+
+  const cancelAction = () => {
+    setPendingAction(null);
+    setTaskName('');
+    setRounds(1);
+  };
+
+  const confirmAction = async () => {
+    if (!pendingAction) return;
+    if (!taskName.trim() || rounds < 1) return;
+    if (!activeItem) return;
+    if (pendingAction.type === 'single') {
+      enterEdit(activeItem, pendingAction.dbg.model, 'SINGLE');
+      for (let i = 0; i < rounds; i++) {
+        await handleRun({ append: i > 0 });
+      }
+    } else {
+      const first = debuggers.find(d => d.id === selectedDebuggerIds[0]);
+      enterEdit(activeItem, first ? first.model : undefined, 'CONTRAST');
+      for (let i = 0; i < rounds; i++) {
+        await handleRun({ append: i > 0 });
+      }
+    }
+    cancelAction();
+  };
+
+  const deleteDebugger = (id: string) => {
+    setDebuggers(prev => prev.filter(d => d.id !== id));
+  };
+
+  const updateDebuggerModel = (id: string, m: GeminiModel) => {
+    setDebuggers(prev => prev.map(d => (d.id === id ? { ...d, model: m } : d)));
   };
 
   // Helper for Input Params List
@@ -214,9 +319,9 @@ const PromptDebugger: React.FC = () => {
       <div className="flex flex-col h-full bg-white p-6 overflow-y-auto">
         <div className="w-full">
             <div className="flex justify-between items-center mb-6 px-2">
-                <h2 className="text-2xl font-bold text-gray-800">Prompt 调试列表</h2>
-                <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm">
-                    新建调试
+                <h2 className="text-2xl font-bold text-gray-800">调试用例列表</h2>
+                <button onClick={() => setCreateModalVisible(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm">
+                    新建调试用例
                 </button>
             </div>
             
@@ -264,7 +369,7 @@ const PromptDebugger: React.FC = () => {
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                     <div className="flex justify-end items-center gap-2">
                                         <button 
-                                            onClick={() => handleEnterDebug(item)}
+                                            onClick={() => handleEnterDebuggerList(item)}
                                             className="text-gray-700 hover:text-blue-600 bg-white hover:bg-blue-50 px-3 py-1.5 rounded transition-colors text-xs font-medium border border-gray-300 hover:border-blue-300"
                                         >
                                             详情
@@ -282,7 +387,252 @@ const PromptDebugger: React.FC = () => {
                     </tbody>
                 </table>
             </div>
+            {createModalVisible && (
+              <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+                <div className="bg-white rounded-lg shadow-lg w-[520px] p-6">
+                  <div className="text-base font-bold text-gray-900 mb-4">新建调试用例</div>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setCreateSource('MANUAL')}
+                          className={`px-3 py-1.5 rounded-md text-sm font-medium border ${createSource === 'MANUAL' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
+                        >
+                          手动输入
+                        </button>
+                        <button
+                          onClick={() => setCreateSource('IMPORT')}
+                          className={`px-3 py-1.5 rounded-md text-sm font-medium border ${createSource === 'IMPORT' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
+                        >
+                          从调优中心导入
+                        </button>
+                      </div>
+                      {createSource === 'IMPORT' && (
+                        <div className="mt-3 border border-gray-200 rounded-md p-8 bg-gray-50">
+                          <div className="w-full flex items-center justify-center">
+                            <button className="px-4 py-2 rounded-md border border-blue-300 text-blue-600 bg-white hover:bg-blue-50 text-sm font-medium">
+                              从调优中心导入
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">用例名称</label>
+                      <input
+                        type="text"
+                        value={createName}
+                        onChange={e => setCreateName(e.target.value)}
+                        placeholder="请输入用例名称"
+                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">版本号</label>
+                      <select
+                        value={createVersion}
+                        onChange={e => setCreateVersion(e.target.value)}
+                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white"
+                      >
+                        <option value="">请选择版本</option>
+                        {versionOptions.map(v => (
+                          <option key={v} value={v}>{v}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">节点</label>
+                      <select
+                        value={createNode}
+                        onChange={e => setCreateNode(e.target.value)}
+                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white"
+                      >
+                        <option value="">请选择节点</option>
+                        {nodeOptions.map(n => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="mt-6 flex justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setCreateModalVisible(false);
+                        setCreateName('');
+                        setCreateVersion('');
+                        setCreateNode('');
+                        setCreateSource('MANUAL');
+                      }}
+                      className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!createName.trim() || !createVersion || !createNode) return;
+                        const newItem = {
+                          id: Date.now().toString(),
+                          name: createName.trim(),
+                          version: createVersion,
+                          node: createNode,
+                          updatedAt: new Date().toISOString().slice(0, 10),
+                        } as DebuggerItem;
+                        setItems(prev => [newItem, ...prev]);
+                        setCreateModalVisible(false);
+                        setCreateName('');
+                        setCreateVersion('');
+                        setCreateNode('');
+                        setCreateSource('MANUAL');
+                      }}
+                      disabled={!createName.trim() || !createVersion || !createNode}
+                      className={`px-4 py-2 text-sm rounded-md text-white ${!createName.trim() || !createVersion || !createNode ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                    >
+                      确定
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
         </div>
+      </div>
+    );
+  }
+
+  if (view === 'DEBUGGER_LIST') {
+    return (
+      <div className="flex flex-col h-full bg-white p-6 overflow-y-auto">
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={handleBackToList}
+            className="text-gray-500 hover:text-gray-800 p-1 rounded-full hover:bg-gray-100 transition-colors"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <h2 className="text-lg font-bold text-gray-900">{activeItem?.name}</h2>
+          <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">{activeItem?.version}</span>
+          <span className="text-xs text-gray-400">• {activeItem?.node}</span>
+          <div className="ml-auto flex items-center gap-4">
+            <button
+              onClick={compareDebuggers}
+              className="text-red-600 hover:text-red-700 text-sm font-medium"
+            >
+              对比调试
+            </button>
+            <button
+              onClick={batchDelete}
+              className="text-red-600 hover:text-red-700 text-sm font-medium"
+            >
+              删除
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 w-10">
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">调试器名称</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">模型</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">操作</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {debuggers.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">暂无调试器</td>
+                </tr>
+              ) : (
+                debuggers.map(dbg => (
+                  <tr key={dbg.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedDebuggerIds.includes(dbg.id)}
+                        onChange={() => toggleSelectDebugger(dbg.id)}
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-sm text-gray-900">{dbg.name}</td>
+                    <td className="px-4 py-2 text-sm text-gray-700">{modelLabel(dbg.model)}</td>
+                    <td className="px-4 py-2 text-sm">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => editDebugger(dbg)}
+                          className="text-gray-700 hover:text-blue-600 bg-white hover:bg-blue-50 px-3 py-1.5 rounded border border-gray-300 text-xs font-medium"
+                        >
+                          编辑
+                        </button>
+                        <button
+                          onClick={() => startDebugger(dbg)}
+                          className="text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded text-xs font-medium"
+                        >
+                          开始执行
+                        </button>
+                        <button
+                          onClick={() => deleteDebugger(dbg.id)}
+                          className="text-red-600 hover:text-red-800 bg-white hover:bg-red-50 px-3 py-1.5 rounded border border-gray-200 text-xs font-medium"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {pendingAction && (
+          <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-lg w-[420px] p-5">
+              <div className="text-base font-bold text-gray-900 mb-4">填写任务信息</div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">任务名称</label>
+                  <input
+                    type="text"
+                    value={taskName}
+                    onChange={e => setTaskName(e.target.value)}
+                    placeholder="请输入任务名称"
+                    className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">执行轮数</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={rounds}
+                    onChange={e => setRounds(parseInt(e.target.value) || 1)}
+                    className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
+                  />
+                </div>
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  onClick={cancelAction}
+                  className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={confirmAction}
+                  disabled={!taskName.trim() || rounds < 1}
+                  className={`px-4 py-2 text-sm rounded-md text-white ${!taskName.trim() || rounds < 1 ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                >
+                  确定
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -290,16 +640,6 @@ const PromptDebugger: React.FC = () => {
   // Debug View
   const renderDebugPanel = (mode: 'PRIMARY' | 'CONTRAST') => (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
-        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-          <TerminalSquare size={16} className="text-indigo-600" />
-          {mode === 'PRIMARY' ? '主模型调试' : '对比模型调试'}
-        </div>
-        {mode === 'CONTRAST' && (
-          <span className="text-[11px] font-semibold text-purple-700 bg-purple-100 px-2 py-1 rounded-full">实验</span>
-        )}
-      </div>
-
       <div className="p-4 space-y-4">
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -363,7 +703,7 @@ const PromptDebugger: React.FC = () => {
         <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-4">
                 <button
-                    onClick={handleBackToList}
+                    onClick={handleBackToDebuggerList}
                     className="text-gray-500 hover:text-gray-800 p-1 rounded-full hover:bg-gray-100 transition-colors"
                 >
                     <ArrowLeft size={20} />
