@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { 
   Play, Sparkles, Trash2, StopCircle, Settings2, Copy, Check, 
-  ArrowLeft, TerminalSquare, Activity, Plus, X, ChevronRight, ChevronDown
+  ArrowLeft, TerminalSquare, Activity, Plus, X, ChevronRight, ChevronDown, Save
 } from 'lucide-react';
 import { generateContentStream } from '../services/geminiService';
 import { GeminiModel } from '../types';
@@ -45,6 +45,7 @@ const PromptDebugger: React.FC = () => {
 
   // Debugger Logic State
   const [model, setModel] = useState<GeminiModel>(GeminiModel.FLASH);
+  const [modelRight, setModelRight] = useState<GeminiModel>(GeminiModel.PRO);
   const [systemInstruction, setSystemInstruction] = useState('');
   const [userPrompt, setUserPrompt] = useState('Explain quantum computing to a 5-year-old.');
   const [response, setResponse] = useState('');
@@ -74,6 +75,9 @@ const PromptDebugger: React.FC = () => {
   const [createNode, setCreateNode] = useState('');
   const versionOptions = ['v1.0.0', 'v1.2.0', 'v2.0.0'];
   const nodeOptions = ['Intent-Analysis', 'Style-Transfer', 'Code-Block', 'Summarization'];
+
+  const [contrastLeft, setContrastLeft] = useState<DebuggerConfig | null>(null);
+  const [contrastRight, setContrastRight] = useState<DebuggerConfig | null>(null);
   
   const isCancelledRef = useRef(false);
 
@@ -162,6 +166,10 @@ const PromptDebugger: React.FC = () => {
     setJsonFormatEnabled(false);
     setJsonParams([]);
     if (m) setModel(m);
+    if (mode === 'SINGLE') {
+      setContrastLeft(null);
+      setContrastRight(null);
+    }
     setView('DEBUG');
   };
 
@@ -217,7 +225,10 @@ const PromptDebugger: React.FC = () => {
         await handleRun({ append: i > 0 });
       }
     } else {
-      const first = debuggers.find(d => d.id === selectedDebuggerIds[0]);
+      const first = debuggers.find(d => d.id === selectedDebuggerIds[0]) || null;
+      const second = debuggers.find(d => d.id === selectedDebuggerIds[1]) || null;
+      setContrastLeft(first);
+      setContrastRight(second);
       enterEdit(activeItem, first ? first.model : undefined, 'CONTRAST');
       for (let i = 0; i < rounds; i++) {
         await handleRun({ append: i > 0 });
@@ -638,64 +649,79 @@ const PromptDebugger: React.FC = () => {
   }
 
   // Debug View
-  const renderDebugPanel = (mode: 'PRIMARY' | 'CONTRAST') => (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-      <div className="p-4 space-y-4">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-gray-700">系统提示词</label>
-            <span className="text-[11px] text-gray-400">统一调试块</span>
-          </div>
-          <textarea
-            className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm leading-relaxed"
-            placeholder="You are a helpful assistant..."
-            value={mode === 'PRIMARY' ? systemInstruction : ''}
-            onChange={(e) => mode === 'PRIMARY' && setSystemInstruction(e.target.value)}
-            readOnly={mode === 'CONTRAST'}
-          />
-        </div>
+  const renderDebugPanel = (mode: 'PRIMARY' | 'CONTRAST') => {
+    const currentModel = mode === 'PRIMARY' ? model : modelRight;
+    const setCurrentModel = mode === 'PRIMARY' ? setModel : setModelRight;
 
-        <div className="space-y-2">
-          <label className="text-xs font-bold text-gray-700">用户提示词</label>
-          <textarea
-            className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm leading-relaxed"
-            placeholder="输入具体内容来测试Prompt..."
-            value={mode === 'PRIMARY' ? userPrompt : ''}
-            onChange={(e) => mode === 'PRIMARY' && setUserPrompt(e.target.value)}
-            readOnly={mode === 'CONTRAST'}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-gray-700">调试结果</label>
-            <div className="flex items-center gap-1 text-[11px] text-gray-400">
-              <ChevronDown size={12} />
-              一体化展示
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="p-4 space-y-4">
+          {/* Model Selection (Inside Panel - Only for CONTRAST mode) */}
+          {debugMode === 'CONTRAST' && (
+            <div className="space-y-2">
+               <label className="text-xs font-bold text-gray-700">模型选择</label>
+               <select
+                  value={currentModel}
+                  onChange={(e) => setCurrentModel(e.target.value as GeminiModel)}
+                  className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white"
+               >
+                  <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
+                  <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
+               </select>
             </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-gray-700">系统提示词</label>
+            </div>
+            <textarea
+              className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm leading-relaxed"
+              placeholder="You are a helpful assistant..."
+              value={mode === 'PRIMARY' ? systemInstruction : ''}
+              onChange={(e) => mode === 'PRIMARY' && setSystemInstruction(e.target.value)}
+              readOnly={mode === 'CONTRAST'}
+            />
           </div>
-          <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
-            {mode === 'PRIMARY' ? (
-              isGenerating ? (
-                <div className="flex items-center gap-2 text-gray-500">
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
-                  Generating...
-                </div>
-              ) : response ? (
-                response
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-gray-700">用户提示词</label>
+            <textarea
+              className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm leading-relaxed"
+              placeholder="输入具体内容来测试Prompt..."
+              value={mode === 'PRIMARY' ? userPrompt : ''}
+              onChange={(e) => mode === 'PRIMARY' && setUserPrompt(e.target.value)}
+              readOnly={mode === 'CONTRAST'}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-gray-700">调试结果</label>
+            </div>
+            <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
+              {mode === 'PRIMARY' ? (
+                isGenerating ? (
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                    Generating...
+                  </div>
+                ) : response ? (
+                  response
+                ) : (
+                  <span className="text-gray-400">输入该用例的标准答案...</span>
+                )
               ) : (
-                <span className="text-gray-400">输入该用例的标准答案...</span>
-              )
-            ) : (
-              <div className="h-full flex items-center justify-center text-gray-400 text-sm">
-                对比输出将显示在此
-              </div>
-            )}
+                <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+                  对比输出将显示在此
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden relative">
@@ -709,6 +735,13 @@ const PromptDebugger: React.FC = () => {
                     <ArrowLeft size={20} />
                 </button>
 
+                <h2 className="text-lg font-bold text-gray-900">{activeItem?.name}</h2>
+                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
+                    {activeItem?.version}
+                </span>
+
+                <div className="h-4 w-px bg-gray-300 mx-1"></div>
+
                 {/* Debug Mode Badge/Toggle */}
                 <div
                   className={`px-3 py-1 rounded-full text-xs font-medium cursor-pointer flex items-center gap-1 transition-colors ${
@@ -719,15 +752,9 @@ const PromptDebugger: React.FC = () => {
                   onClick={() => setDebugMode(debugMode === 'SINGLE' ? 'CONTRAST' : 'SINGLE')}
                   title="Click to switch mode"
                 >
-                   {debugMode === 'SINGLE' ? '单个调试' : '对比调试'}
+                   {debugMode === 'SINGLE' ? '单点调试' : '对比调试'}
                 </div>
 
-                <div className="h-4 w-px bg-gray-300 mx-1"></div>
-
-                <h2 className="text-lg font-bold text-gray-900">{activeItem?.name}</h2>
-                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
-                    {activeItem?.version}
-                </span>
                 <span className="text-xs text-gray-400 flex items-center">
                    • {activeItem?.node}
                 </span>
@@ -736,6 +763,26 @@ const PromptDebugger: React.FC = () => {
 
         {/* Scrollable Main Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 pb-24">
+
+            {/* Debugger Name - Only show in SINGLE mode */}
+            {debugMode === 'SINGLE' && (
+                <div className="mb-8 space-y-3">
+                    <label className="block text-sm font-bold text-gray-900">调试器名称</label>
+                    <input
+                        type="text"
+                        value={activeItem?.name || ''}
+                        onChange={(e) => {
+                            if (activeItem) {
+                                const newName = e.target.value;
+                                setActiveItem({ ...activeItem, name: newName });
+                                setItems(prev => prev.map(item => item.id === activeItem.id ? { ...item, name: newName } : item));
+                            }
+                        }}
+                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
+                        placeholder="请输入调试器名称"
+                    />
+                </div>
+            )}
 
             {/* 1. Input Parameters */}
             <div className="mb-8">
@@ -750,19 +797,20 @@ const PromptDebugger: React.FC = () => {
 
             {/* 2. Configuration Grid */}
             <div className="grid grid-cols-2 gap-x-12 gap-y-8 mb-8">
-                 {/* Model Selection */}
-                 <div className="space-y-3">
-                    <label className="block text-sm font-bold text-gray-900">模型选择</label>
-                    <select
-                        value={model}
-                        onChange={(e) => setModel(e.target.value as GeminiModel)}
-                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white"
-                    >
-                        <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
-                        <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
-                    </select>
-                 </div>
-
+                 {/* Model Selection - Only for SINGLE mode */}
+                 {debugMode === 'SINGLE' && (
+                    <div className="space-y-3">
+                        <label className="block text-sm font-bold text-gray-900">模型选择</label>
+                        <select
+                            value={model}
+                            onChange={(e) => setModel(e.target.value as GeminiModel)}
+                            className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white"
+                        >
+                            <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
+                            <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
+                        </select>
+                    </div>
+                 )}
                  {/* Tools Settings */}
                  <div className="space-y-3">
                     <label className="block text-sm font-bold text-gray-900">工具设置</label>
@@ -840,17 +888,16 @@ const PromptDebugger: React.FC = () => {
 
             {/* 4. Unified Debug Block */}
             <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-gray-900">提示词与结果一体化</p>
-                    <p className="text-xs text-gray-500">系统提示词、用户提示词和调试结果放在同一个调试块中</p>
+                {debugMode === 'CONTRAST' && (
+                  <div className="grid grid-cols-2 gap-6 mb-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-medium text-gray-900">{contrastLeft?.name ?? '—'}</span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-medium text-gray-900">{contrastRight?.name ?? '—'}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <Sparkles size={14} className="text-indigo-500" />
-                    <span>实时预览</span>
-                  </div>
-                </div>
-
+                )}
                 <div className={`grid ${debugMode === 'CONTRAST' ? 'grid-cols-2' : 'grid-cols-1'} gap-6`}>
                   {renderDebugPanel('PRIMARY')}
                   {debugMode === 'CONTRAST' && renderDebugPanel('CONTRAST')}
@@ -871,28 +918,43 @@ const PromptDebugger: React.FC = () => {
                 Clear Input
             </button>
 
-            {isGenerating ? (
+            <div className="flex items-center gap-3">
                 <button
-                onClick={handleStop}
-                className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-sm"
+                    onClick={handleBackToDebuggerList}
+                    className="text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm"
                 >
-                <StopCircle size={16} />
-                Stop Generation
+                    取消
                 </button>
-            ) : (
                 <button
-                onClick={handleRun}
-                disabled={!userPrompt.trim()}
-                className={`px-6 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all transform active:scale-95 text-sm ${
-                    !userPrompt.trim()
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white hover:shadow-blue-200'
-                }`}
+                    onClick={() => alert('保存成功！')}
+                    className="text-blue-600 bg-white hover:bg-blue-50 border border-blue-600 px-4 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-sm"
                 >
-                <Play size={16} fill="currentColor" />
-                运行调试
+                    <Save size={16} />
+                    保存
                 </button>
-            )}
+                {isGenerating ? (
+                    <button
+                    onClick={handleStop}
+                    className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-sm"
+                    >
+                    <StopCircle size={16} />
+                    Stop Generation
+                    </button>
+                ) : (
+                    <button
+                    onClick={handleRun}
+                    disabled={!userPrompt.trim()}
+                    className={`px-6 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all transform active:scale-95 text-sm ${
+                        !userPrompt.trim()
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white hover:shadow-blue-200'
+                    }`}
+                    >
+                    <Play size={16} fill="currentColor" />
+                    运行调试
+                    </button>
+                )}
+            </div>
         </div>
     </div>
   );

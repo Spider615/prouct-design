@@ -198,7 +198,7 @@ const TaskList: React.FC = () => {
       <div className="flex flex-col h-full bg-white p-6 overflow-y-auto">
         <div className="flex items-center gap-3 mb-4">
           <button onClick={() => setView('LIST')} className="text-gray-500 hover:text-gray-800 p-1 rounded-full hover:bg-gray-100 transition-colors">←</button>
-          <h2 className="text-lg font-bold text-gray-900">{activeTask.name} 结果详情</h2>
+          <h2 className="text-lg font-bold text-gray-900">{activeTask.name}</h2>
         </div>
         <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden w-full">
           <table className="min-w-full divide-y divide-gray-200">
@@ -215,7 +215,11 @@ const TaskList: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {resultRows.map((r, idx) => (
                 <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm text-gray-900">{r.debuggerName}</td>
+                  <td className="px-6 py-4 text-sm text-gray-900">
+                    {activeTask.debugMode === 'CONTRAST' && idx === 0
+                      ? `${resultRows[0]?.debuggerName} / ${resultRows[1]?.debuggerName ?? ''}`
+                      : r.debuggerName}
+                  </td>
                   <td className="px-6 py-4 text-sm text-gray-700">{activeTask.type === 'DEBUG' ? (idx === 0 ? '对比调试' : '单点调试') : ''}</td>
                   <td className="px-6 py-4 text-sm text-gray-700">{r.resultText}</td>
                   <td className="px-6 py-4 text-sm text-gray-700">{r.latencyMs ? `${r.latencyMs} ms` : '-'}</td>
@@ -260,126 +264,135 @@ const TaskList: React.FC = () => {
             </div>
           </div>
 
+          <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-6">
+            <div className="space-y-3">
+              <label className="block text-sm font-bold text-gray-900">工具设置</label>
+              <div className="space-y-3">
+                <input type="text" value={kbName} onChange={(e) => setKbName(e.target.value)} placeholder="知识库名称" className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border" />
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
+                  <input type="number" value={toolCallCount} onChange={(e) => setToolCallCount(parseInt(e.target.value) || 0)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border" />
+                </div>
+              </div>
+            </div>
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
+                  <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperature}</span>
+                </div>
+                <input type="range" min="0" max="1" step="0.1" value={temperature} onChange={(e) => setTemperature(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="block text-sm font-bold text-gray-900">Top P</label>
+                  <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topP}</span>
+                </div>
+                <input type="range" min="0" max="1" step="0.05" value={topP} onChange={(e) => setTopP(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+              </div>
+            </div>
+          </div>
+
           <div className="mb-8 flex items-center justify-between py-2">
             <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
             <div onClick={() => setJsonFormatEnabled(!jsonFormatEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
               <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-x-12 gap-y-8 mb-8">
-            {isContrast ? (
-              <>
-                <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-3">
-                  <label className="block text-sm font-bold text-gray-900">模型选择（左）</label>
-                  <select value={model} onChange={(e) => setModel(e.target.value as GeminiModel)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white">
-                    <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
-                    <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
-                  </select>
+          {isContrast ? (
+            <>
+              <div className="grid grid-cols-2 gap-6 mb-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-sm font-medium text-gray-900">{resultRows[0]?.debuggerName ?? '—'}</span>
                 </div>
-                <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-3">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-sm font-medium text-gray-900">{resultRows[1]?.debuggerName ?? '—'}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-6 mb-8">
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-bold text-gray-900">{resultRows[0]?.debuggerName ?? '调试器A'}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-bold text-gray-900">模型选择（左）</label>
+                    <select value={model} onChange={(e) => setModel(e.target.value as GeminiModel)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white">
+                      <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
+                      <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
+                    </select>
+                  </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-700">系统提示词（左）</label>
+                  <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstruction} onChange={(e) => setSystemInstruction(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-700">用户提示词（左）</label>
+                  <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm font-bold text-gray-900">调试结果（左）</div>
+                  <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
+                    {currentResultText ? currentResultText : <span className="text-gray-400">暂无结果</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-bold text-gray-900">{resultRows[1]?.debuggerName ?? '调试器B'}</div>
+                </div>
+                <div className="space-y-2">
                   <label className="block text-sm font-bold text-gray-900">模型选择（右）</label>
                   <select value={modelRight} onChange={(e) => setModelRight(e.target.value as GeminiModel)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white">
                     <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
                     <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
                   </select>
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="space-y-3">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-700">系统提示词（右）</label>
+                  <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstructionRight} onChange={(e) => setSystemInstructionRight(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-700">用户提示词（右）</label>
+                  <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPromptRight} onChange={(e) => setUserPromptRight(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm font-bold text-gray-900">调试结果（右）</div>
+                  <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
+                    {resultRows[1]?.resultText ? resultRows[1]?.resultText : <span className="text-gray-400">暂无结果</span>}
+                  </div>
+                </div>
+              </div>
+            </div>
+            </>
+          ) : (
+            <div className="mb-8">
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
+                <div className="space-y-2">
                   <label className="block text-sm font-bold text-gray-900">模型选择</label>
                   <select value={model} onChange={(e) => setModel(e.target.value as GeminiModel)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white">
                     <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
                     <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
                   </select>
                 </div>
-                <div className="space-y-3">
-                  <label className="block text-sm font-bold text-gray-900">工具设置</label>
-                  <div className="space-y-3">
-                    <input type="text" value={kbName} onChange={(e) => setKbName(e.target.value)} placeholder="知识库名称" className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border" />
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
-                      <input type="number" value={toolCallCount} onChange={(e) => setToolCallCount(parseInt(e.target.value) || 0)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border" />
-                    </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-700">系统提示词</label>
+                  <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstruction} onChange={(e) => setSystemInstruction(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-700">用户提示词</label>
+                  <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm font-bold text-gray-900">调试结果</div>
+                  <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
+                    {currentResultText ? currentResultText : <span className="text-gray-400">暂无结果</span>}
                   </div>
                 </div>
-              </>
-            )}
-            {!isContrast && (
-              <>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
-                    <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperature}</span>
-                  </div>
-                  <input type="range" min="0" max="1" step="0.1" value={temperature} onChange={(e) => setTemperature(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                </div>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <label className="block text-sm font-bold text-gray-900">Top P</label>
-                    <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topP}</span>
-                  </div>
-                  <input type="range" min="0" max="1" step="0.05" value={topP} onChange={(e) => setTopP(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                </div>
-              </>
-            )}
-          </div>
-          
-          {isContrast ? (
-            <div className="grid grid-cols-2 gap-6">
-              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-2">
-                <label className="text-xs font-bold text-gray-700">系统提示词（左）</label>
-                <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstruction} onChange={(e) => setSystemInstruction(e.target.value)} />
-              </div>
-              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-2">
-                <label className="text-xs font-bold text-gray-700">系统提示词（右）</label>
-                <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstructionRight} onChange={(e) => setSystemInstructionRight(e.target.value)} />
-              </div>
-              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-2">
-                <label className="text-xs font-bold text-gray-700">用户提示词（左）</label>
-                <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
-              </div>
-              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-2">
-                <label className="text-xs font-bold text-gray-700">用户提示词（右）</label>
-                <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPromptRight} onChange={(e) => setUserPromptRight(e.target.value)} />
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-700">系统提示词</label>
-                <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstruction} onChange={(e) => setSystemInstruction(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-700">用户提示词</label>
-                <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
               </div>
             </div>
           )}
           
-          {isContrast ? (
-            <div className="mt-8 grid grid-cols-2 gap-6">
-              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
-                <div className="text-sm font-bold text-gray-900 mb-2">调试结果（左）</div>
-                <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
-                  {currentResultText ? currentResultText : <span className="text-gray-400">暂无结果</span>}
-                </div>
-              </div>
-              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
-                <div className="text-sm font-bold text-gray-900 mb-2">调试结果（右）</div>
-                <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
-                  {resultRows[1]?.resultText ? resultRows[1]?.resultText : <span className="text-gray-400">暂无结果</span>}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="mt-8">
-              <div className="text-sm font-bold text-gray-900 mb-2">调试结果</div>
-              <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
-                {currentResultText ? currentResultText : <span className="text-gray-400">暂无结果</span>}
-              </div>
-            </div>
-          )}
+          
           
         </div>
       </div>
