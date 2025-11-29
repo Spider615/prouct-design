@@ -434,66 +434,39 @@ const PromptDebugger: React.FC = () => {
                 
                 {/* System Instruction */}
                 <div>
-                   <label className="block text-sm font-bold text-gray-900 mb-3">System Instruction (Prompt Template)</label>
-                   <div className="grid grid-cols-2 gap-6">
-                       <textarea
-                           className="w-full h-40 p-4 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm transition-colors leading-relaxed"
-                           placeholder="You are a helpful assistant..."
-                           value={systemInstruction}
-                           onChange={(e) => setSystemInstruction(e.target.value)}
-                       />
-                       <div className="w-full h-40 border border-gray-200 rounded-lg bg-gray-50 relative">
-                           {debugMode === 'CONTRAST' && (
-                               <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
-                                   对比模型 System Instruction (Placeholder)
-                               </div>
-                           )}
-                       </div>
-                   </div>
+                  <label className="block text-sm font-bold text-gray-900 mb-3">System Instruction (Prompt Template)</label>
+                  <textarea
+                    className="w-full min-h-[160px] p-4 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm transition-colors leading-relaxed"
+                    placeholder="You are a helpful assistant..."
+                    value={systemInstruction}
+                    onChange={(e) => setSystemInstruction(e.target.value)}
+                  />
                 </div>
 
                 {/* User Prompt */}
                 <div>
-                   <label className="block text-sm font-bold text-gray-900 mb-3">用户输入内容 (User Prompt)</label>
-                   <div className="grid grid-cols-2 gap-6">
-                       <textarea
-                           className="w-full h-40 p-4 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm leading-relaxed"
-                           placeholder="输入具体内容来测试Prompt..."
-                           value={userPrompt}
-                           onChange={(e) => setUserPrompt(e.target.value)}
-                       />
-                       <div className="w-full h-40 border border-gray-200 rounded-lg bg-gray-50 relative">
-                           {debugMode === 'CONTRAST' && (
-                               <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
-                                   对比模型 User Prompt (Placeholder)
-                               </div>
-                           )}
-                       </div>
-                   </div>
+                  <label className="block text-sm font-bold text-gray-900 mb-3">用户输入内容 (User Prompt)</label>
+                  <textarea
+                    className="w-full min-h-[160px] p-4 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm leading-relaxed"
+                    placeholder="输入具体内容来测试Prompt..."
+                    value={userPrompt}
+                    onChange={(e) => setUserPrompt(e.target.value)}
+                  />
                 </div>
 
                 {/* Results */}
                 <div>
-                   <label className="block text-sm font-bold text-gray-900 mb-3">调试结果</label>
-                   <div className="grid grid-cols-2 gap-6">
-                       <div className="w-full min-h-[160px] p-4 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
-                           {isGenerating ? (
-                               <div className="flex items-center gap-2 text-gray-500">
-                                   <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
-                                   Generating...
-                               </div>
-                           ) : response ? response : (
-                               <span className="text-gray-400">输入该用例的标准答案...</span>
-                           )}
-                       </div>
-                       <div className="w-full min-h-[160px] border border-gray-200 rounded-lg bg-gray-50">
-                            {debugMode === 'CONTRAST' && (
-                               <div className="h-full flex items-center justify-center text-gray-400 text-sm">
-                                   对比模型 Output (Placeholder)
-                               </div>
-                           )}
-                       </div>
-                   </div>
+                  <label className="block text-sm font-bold text-gray-900 mb-3">调试结果</label>
+                  <div className="w-full min-h-[160px] p-4 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
+                    {isGenerating ? (
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                        Generating...
+                      </div>
+                    ) : response ? response : (
+                      <span className="text-gray-400">输入该用例的标准答案...</span>
+                    )}
+                  </div>
                 </div>
 
             </div>
