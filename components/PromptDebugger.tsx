@@ -14,6 +14,7 @@ interface DebuggerItem {
   version: string;
   node: string;
   updatedAt: string;
+  sourceMethod: 'MANUAL' | 'IMPORT';
 }
 
 interface InputParam {
@@ -25,10 +26,10 @@ interface InputParam {
 }
 
 const INITIAL_DATA: DebuggerItem[] = [
-  { id: '1', name: '电商客服助手', version: 'v1.2.0', node: 'Intent-Analysis', updatedAt: '2023-10-24' },
-  { id: '2', name: '文案润色专家', version: 'v0.8.5', node: 'Style-Transfer', updatedAt: '2023-10-22' },
-  { id: '3', name: 'Python代码生成', version: 'v2.1.0', node: 'Code-Block', updatedAt: '2023-10-20' },
-  { id: '4', name: '通用摘要提取', version: 'v1.0.1', node: 'Summarization', updatedAt: '2023-10-18' },
+  { id: '1', name: '电商客服助手', version: 'v1.2.0', node: 'Intent-Analysis', updatedAt: '2023-10-24', sourceMethod: 'MANUAL' },
+  { id: '2', name: '文案润色专家', version: 'v0.8.5', node: 'Style-Transfer', updatedAt: '2023-10-22', sourceMethod: 'IMPORT' },
+  { id: '3', name: 'Python代码生成', version: 'v2.1.0', node: 'Code-Block', updatedAt: '2023-10-20', sourceMethod: 'MANUAL' },
+  { id: '4', name: '通用摘要提取', version: 'v1.0.1', node: 'Summarization', updatedAt: '2023-10-18', sourceMethod: 'IMPORT' },
 ];
 
 interface DebuggerConfig {
@@ -60,12 +61,13 @@ const PromptDebugger: React.FC = () => {
   const [toolCallCount, setToolCallCount] = useState<number>(0);
   const [temperature, setTemperature] = useState<number>(0.7);
   const [topP, setTopP] = useState<number>(0.95);
+  const [referenceHistoryEnabled, setReferenceHistoryEnabled] = useState(false);
   const [jsonFormatEnabled, setJsonFormatEnabled] = useState(false);
   const [jsonParams, setJsonParams] = useState<InputParam[]>([]);
   const [debuggers, setDebuggers] = useState<DebuggerConfig[]>([]);
   const [editingDebuggerId, setEditingDebuggerId] = useState<string | null>(null);
   const [selectedDebuggerIds, setSelectedDebuggerIds] = useState<string[]>([]);
-  const [pendingAction, setPendingAction] = useState<null | { type: 'single'; dbg: DebuggerConfig } | { type: 'compare' }>(null);
+  const [pendingAction, setPendingAction] = useState<null | { type: 'single'; dbg: DebuggerConfig } | { type: 'execution_config' }>(null);
   const [taskName, setTaskName] = useState('');
   const [rounds, setRounds] = useState<number>(1);
   const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -78,6 +80,7 @@ const PromptDebugger: React.FC = () => {
 
   const [contrastLeft, setContrastLeft] = useState<DebuggerConfig | null>(null);
   const [contrastRight, setContrastRight] = useState<DebuggerConfig | null>(null);
+  const [debuggerConfigName, setDebuggerConfigName] = useState('');
   
   const isCancelledRef = useRef(false);
 
@@ -163,8 +166,10 @@ const PromptDebugger: React.FC = () => {
     setToolCallCount(0);
     setTemperature(0.7);
     setTopP(0.95);
+    setReferenceHistoryEnabled(false);
     setJsonFormatEnabled(false);
     setJsonParams([]);
+    setPendingAction(null);
     if (m) setModel(m);
     if (mode === 'SINGLE') {
       setContrastLeft(null);
@@ -175,6 +180,7 @@ const PromptDebugger: React.FC = () => {
 
   const editDebugger = (dbg: DebuggerConfig) => {
     if (!activeItem) return;
+    setDebuggerConfigName(dbg.name);
     enterEdit(activeItem, dbg.model, 'SINGLE');
   };
 
@@ -204,9 +210,15 @@ const PromptDebugger: React.FC = () => {
 
   const compareDebuggers = () => {
     if (selectedDebuggerIds.length < 2) return;
-    setPendingAction({ type: 'compare' });
-    setTaskName('');
-    setRounds(1);
+    
+    const first = debuggers.find(d => d.id === selectedDebuggerIds[0]) || null;
+    const second = debuggers.find(d => d.id === selectedDebuggerIds[1]) || null;
+    
+    if (activeItem) {
+      setContrastLeft(first);
+      setContrastRight(second);
+      enterEdit(activeItem, first ? first.model : undefined, 'CONTRAST');
+    }
   };
 
   const cancelAction = () => {
@@ -219,18 +231,15 @@ const PromptDebugger: React.FC = () => {
     if (!pendingAction) return;
     if (!taskName.trim() || rounds < 1) return;
     if (!activeItem) return;
+    
     if (pendingAction.type === 'single') {
       enterEdit(activeItem, pendingAction.dbg.model, 'SINGLE');
       for (let i = 0; i < rounds; i++) {
         await handleRun({ append: i > 0 });
       }
-    } else {
-      const first = debuggers.find(d => d.id === selectedDebuggerIds[0]) || null;
-      const second = debuggers.find(d => d.id === selectedDebuggerIds[1]) || null;
-      setContrastLeft(first);
-      setContrastRight(second);
-      enterEdit(activeItem, first ? first.model : undefined, 'CONTRAST');
-      for (let i = 0; i < rounds; i++) {
+    } else if (pendingAction.type === 'execution_config') {
+      // Execute contrast run
+       for (let i = 0; i < rounds; i++) {
         await handleRun({ append: i > 0 });
       }
     }
@@ -323,6 +332,51 @@ const PromptDebugger: React.FC = () => {
     );
   };
 
+  const taskConfigModal = pendingAction && (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-lg w-[420px] p-5">
+        <div className="text-base font-bold text-gray-900 mb-4">填写任务信息</div>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">任务名称</label>
+            <input
+              type="text"
+              value={taskName}
+              onChange={e => setTaskName(e.target.value)}
+              placeholder="请输入任务名称"
+              className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">执行轮数</label>
+            <input
+              type="number"
+              min={1}
+              value={rounds}
+              onChange={e => setRounds(parseInt(e.target.value) || 1)}
+              className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
+            />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={cancelAction}
+            className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={confirmAction}
+            disabled={!taskName.trim() || rounds < 1}
+            className={`px-4 py-2 text-sm rounded-md text-white ${!taskName.trim() || rounds < 1 ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+          >
+            确定
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   // --- Views ---
 
   if (view === 'LIST') {
@@ -340,16 +394,17 @@ const PromptDebugger: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                         <tr>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[30%]">调试器名称</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[25%]">调试器名称</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[15%]">版本号</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[20%]">节点</th>
-                            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-[35%]">操作</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[15%]">数据来源方式</th>
+                            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-[25%]">操作</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {items.length === 0 ? (
                             <tr>
-                                <td colSpan={4} className="px-6 py-12 text-center text-gray-500 text-sm">
+                                <td colSpan={5} className="px-6 py-12 text-center text-gray-500 text-sm">
                                     暂无数据
                                 </td>
                             </tr>
@@ -376,6 +431,9 @@ const PromptDebugger: React.FC = () => {
                                         <Activity size={14} className="text-gray-400" />
                                         {item.node}
                                     </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                    {item.sourceMethod === 'MANUAL' ? '手动输入' : '从调优中心导入'}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                     <div className="flex justify-end items-center gap-2">
@@ -404,6 +462,7 @@ const PromptDebugger: React.FC = () => {
                   <div className="text-base font-bold text-gray-900 mb-4">新建调试用例</div>
                   <div className="space-y-4">
                     <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">数据来源方式</label>
                       <div className="flex gap-2">
                         <button
                           onClick={() => setCreateSource('MANUAL')}
@@ -487,6 +546,7 @@ const PromptDebugger: React.FC = () => {
                           version: createVersion,
                           node: createNode,
                           updatedAt: new Date().toISOString().slice(0, 10),
+                          sourceMethod: createSource,
                         } as DebuggerItem;
                         setItems(prev => [newItem, ...prev]);
                         setCreateModalVisible(false);
@@ -520,18 +580,38 @@ const PromptDebugger: React.FC = () => {
             <ArrowLeft size={20} />
           </button>
           <h2 className="text-lg font-bold text-gray-900">{activeItem?.name}</h2>
-          <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">{activeItem?.version}</span>
           <span className="text-xs text-gray-400">• {activeItem?.node}</span>
           <div className="ml-auto flex items-center gap-4">
             <button
+              onClick={() => {
+                if (activeItem) {
+                    setDebuggerConfigName('');
+                    enterEdit(activeItem, GeminiModel.FLASH, 'SINGLE');
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors"
+            >
+              新建调试器
+            </button>
+            <button
               onClick={compareDebuggers}
-              className="text-red-600 hover:text-red-700 text-sm font-medium"
+              disabled={selectedDebuggerIds.length < 2}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors border ${
+                selectedDebuggerIds.length >= 2
+                  ? 'border-purple-600 text-purple-600 hover:bg-purple-50 bg-white'
+                  : 'border-gray-200 text-gray-300 cursor-not-allowed bg-gray-50'
+              }`}
             >
               对比调试
             </button>
             <button
               onClick={batchDelete}
-              className="text-red-600 hover:text-red-700 text-sm font-medium"
+              disabled={selectedDebuggerIds.length === 0}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors border ${
+                selectedDebuggerIds.length > 0
+                  ? 'border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 bg-white'
+                  : 'border-gray-200 text-gray-300 cursor-not-allowed bg-gray-50'
+              }`}
             >
               删除
             </button>
@@ -599,51 +679,7 @@ const PromptDebugger: React.FC = () => {
             </tbody>
           </table>
         </div>
-
-        {pendingAction && (
-          <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-lg w-[420px] p-5">
-              <div className="text-base font-bold text-gray-900 mb-4">填写任务信息</div>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">任务名称</label>
-                  <input
-                    type="text"
-                    value={taskName}
-                    onChange={e => setTaskName(e.target.value)}
-                    placeholder="请输入任务名称"
-                    className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">执行轮数</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={rounds}
-                    onChange={e => setRounds(parseInt(e.target.value) || 1)}
-                    className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
-                  />
-                </div>
-              </div>
-              <div className="mt-5 flex justify-end gap-2">
-                <button
-                  onClick={cancelAction}
-                  className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={confirmAction}
-                  disabled={!taskName.trim() || rounds < 1}
-                  className={`px-4 py-2 text-sm rounded-md text-white ${!taskName.trim() || rounds < 1 ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
-                >
-                  确定
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {taskConfigModal}
       </div>
     );
   }
@@ -736,9 +772,6 @@ const PromptDebugger: React.FC = () => {
                 </button>
 
                 <h2 className="text-lg font-bold text-gray-900">{activeItem?.name}</h2>
-                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
-                    {activeItem?.version}
-                </span>
 
                 <div className="h-4 w-px bg-gray-300 mx-1"></div>
 
@@ -770,14 +803,8 @@ const PromptDebugger: React.FC = () => {
                     <label className="block text-sm font-bold text-gray-900">调试器名称</label>
                     <input
                         type="text"
-                        value={activeItem?.name || ''}
-                        onChange={(e) => {
-                            if (activeItem) {
-                                const newName = e.target.value;
-                                setActiveItem({ ...activeItem, name: newName });
-                                setItems(prev => prev.map(item => item.id === activeItem.id ? { ...item, name: newName } : item));
-                            }
-                        }}
+                        value={debuggerConfigName}
+                        onChange={(e) => setDebuggerConfigName(e.target.value)}
                         className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
                         placeholder="请输入调试器名称"
                     />
@@ -867,6 +894,19 @@ const PromptDebugger: React.FC = () => {
                         className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                     />
                  </div>
+
+                 {/* Reference History Switch */}
+                 <div className="space-y-3">
+                    <div className="flex justify-between items-center h-full">
+                        <label className="block text-sm font-bold text-gray-900">引用历史</label>
+                        <div
+                            onClick={() => setReferenceHistoryEnabled(!referenceHistoryEnabled)}
+                            className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
+                        >
+                            <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </div>
+                    </div>
+                 </div>
             </div>
 
             {/* 3. JSON Output Switch */}
@@ -925,13 +965,27 @@ const PromptDebugger: React.FC = () => {
                 >
                     取消
                 </button>
-                <button
-                    onClick={() => alert('保存成功！')}
-                    className="text-blue-600 bg-white hover:bg-blue-50 border border-blue-600 px-4 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-sm"
-                >
-                    <Save size={16} />
-                    保存
-                </button>
+                {debugMode === 'CONTRAST' ? (
+                    <button
+                        onClick={() => {
+                            setPendingAction({ type: 'execution_config' });
+                            setTaskName('');
+                            setRounds(1);
+                        }}
+                        className="text-blue-600 bg-white hover:bg-blue-50 border border-blue-600 px-4 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-sm"
+                    >
+                        <Play size={16} />
+                        开始执行
+                    </button>
+                ) : (
+                    <button
+                        onClick={() => alert('保存成功！')}
+                        className="text-blue-600 bg-white hover:bg-blue-50 border border-blue-600 px-4 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-sm"
+                    >
+                        <Save size={16} />
+                        保存
+                    </button>
+                )}
                 {isGenerating ? (
                     <button
                     onClick={handleStop}
@@ -956,6 +1010,7 @@ const PromptDebugger: React.FC = () => {
                 )}
             </div>
         </div>
+        {taskConfigModal}
     </div>
   );
 };

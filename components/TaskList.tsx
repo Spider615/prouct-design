@@ -18,15 +18,16 @@ interface TaskItem {
   progress: number; // 0-1
   createdAt: string;
   debugMode?: 'SINGLE' | 'CONTRAST';
+  model?: string;
 }
 
 const MOCK_TASKS: TaskItem[] = [
   {
     id: 't1',
-    name: '调试-默认调试器A',
+    name: 'test',
     type: 'DEBUG',
-    collectionName: '电商客服助手-调试用例',
-    version: 'gemini-2.5-flash',
+    collectionName: '调试器A / 调试器B',
+    version: '9-v1.0.9',
     nodes: ['大模型生成'],
     rounds: 1,
     passRate: 0.83,
@@ -34,19 +35,51 @@ const MOCK_TASKS: TaskItem[] = [
     progress: 1,
     createdAt: '2025-11-28 10:21',
     debugMode: 'CONTRAST',
+    model: 'Gemini 2.5 Flash / Gemini 3 Pro (Preview)',
+  },
+  {
+    id: 't4',
+    name: 'test-11111111',
+    type: 'DEBUG',
+    collectionName: '调试器B / 调试器C',
+    version: '9-v1.0.9',
+    nodes: ['大模型生成'],
+    rounds: 10,
+    passRate: 0.83,
+    avgLatencyMs: 720,
+    progress: 1,
+    createdAt: '2025-11-28 10:21',
+    debugMode: 'SINGLE',
+    model: 'Gemini 2.5 Flash',
+  },
+  {
+    id: 't5',
+    name: '调试-单点模式测试',
+    type: 'DEBUG',
+    collectionName: '调试器C',
+    version: 'gemini-2.5-flash',
+    nodes: ['大模型生成'],
+    rounds: 5,
+    passRate: 0.9,
+    avgLatencyMs: 600,
+    progress: 1,
+    createdAt: '2025-11-29 11:00',
+    debugMode: 'SINGLE',
+    model: 'Gemini 2.5 Flash',
   },
   {
     id: 't2',
     name: '测试-批量回归套件',
     type: 'TEST',
     collectionName: '批量测试集',
-    version: 'qianwen3max-v1.0.10',
+    version: '9-v1.0.9',
     nodes: ['大模型生成'],
     rounds: 20,
     passRate: 0.38,
     avgLatencyMs: 930,
     progress: 0.6,
     createdAt: '2025-11-27 16:05',
+    model: 'Gemini 2.5 Flash',
   },
   {
     id: 't3',
@@ -60,6 +93,7 @@ const MOCK_TASKS: TaskItem[] = [
     avgLatencyMs: 840,
     progress: 0.2,
     createdAt: '2025-11-25 09:40',
+    model: 'Gemini 2.5 Flash',
   },
 ];
 
@@ -72,6 +106,8 @@ const TaskList: React.FC = () => {
     resultText: string;
     latencyMs: number;
     status: 'DONE' | 'PENDING' | 'FAILED';
+    sourceMethod?: string;
+    tokenUsage?: number;
   } | null>(null);
   const tasks = MOCK_TASKS;
   const [resultRows, setResultRows] = useState<{
@@ -80,6 +116,8 @@ const TaskList: React.FC = () => {
     resultText: string;
     latencyMs: number;
     status: 'DONE' | 'PENDING' | 'FAILED';
+    sourceMethod?: string;
+    tokenUsage?: number;
   }[]>([]);
   const [model, setModel] = useState<GeminiModel>(GeminiModel.FLASH);
   const [modelRight, setModelRight] = useState<GeminiModel>(GeminiModel.PRO);
@@ -94,6 +132,7 @@ const TaskList: React.FC = () => {
   const [temperature, setTemperature] = useState<number>(0.7);
   const [topP, setTopP] = useState<number>(0.95);
   const [jsonFormatEnabled, setJsonFormatEnabled] = useState(false);
+  const [referenceHistoryEnabled, setReferenceHistoryEnabled] = useState(false);
   const isCancelledRef = useRef(false);
 
   interface InputParam { id: string; name: string; type: string; source: string; description: string; }
@@ -206,8 +245,11 @@ const TaskList: React.FC = () => {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调试器名称</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调试模式</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">模型</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">数据来源方式</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调试结果</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">响应时长</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">消耗Token</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">执行状态</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
               </tr>
@@ -216,13 +258,26 @@ const TaskList: React.FC = () => {
               {resultRows.map((r, idx) => (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm text-gray-900">
-                    {activeTask.debugMode === 'CONTRAST' && idx === 0
-                      ? `${resultRows[0]?.debuggerName} / ${resultRows[1]?.debuggerName ?? ''}`
-                      : r.debuggerName}
+                    {activeTask.collectionName}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">{activeTask.type === 'DEBUG' ? (idx === 0 ? '对比调试' : '单点调试') : ''}</td>
-                  <td className="px-6 py-4 text-sm text-gray-700">{r.resultText}</td>
-                  <td className="px-6 py-4 text-sm text-gray-700">{r.latencyMs ? `${r.latencyMs} ms` : '-'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{activeTask.type === 'DEBUG' ? (activeTask.debugMode === 'CONTRAST' ? '对比调试' : '单点调试') : ''}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{activeTask.model}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{r.sourceMethod || '-'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">
+                    {activeTask.type === 'DEBUG' && activeTask.debugMode === 'CONTRAST' && resultRows.length === 2
+                      ? `${resultRows[0].resultText.substring(0, 10)}${resultRows[0].resultText.length > 10 ? '...' : ''} / ${resultRows[1].resultText.substring(0, 10)}${resultRows[1].resultText.length > 10 ? '...' : ''}`
+                      : r.resultText}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-700">
+                    {activeTask.type === 'DEBUG' && activeTask.debugMode === 'CONTRAST' && resultRows.length === 2
+                      ? `${resultRows[0].latencyMs ? `${resultRows[0].latencyMs} ms` : '-'} / ${resultRows[1].latencyMs ? `${resultRows[1].latencyMs} ms` : '-'}`
+                      : (r.latencyMs ? `${r.latencyMs} ms` : '-')}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-700">
+                    {activeTask.type === 'DEBUG' && activeTask.debugMode === 'CONTRAST' && resultRows.length === 2
+                      ? `${resultRows[0].tokenUsage ?? '-'} / ${resultRows[1].tokenUsage ?? '-'}`
+                      : (r.tokenUsage ?? '-')}
+                  </td>
                   <td className="px-6 py-4 text-sm">{statusBadge(r.status)}</td>
                   <td className="px-6 py-4 text-sm text-right">
                     <button
@@ -243,17 +298,46 @@ const TaskList: React.FC = () => {
 
   if (view === 'RESULT_DETAIL' && activeTask && activeResult) {
     const currentResultText = resultRows.find(r => r.id === activeResult.id)?.resultText ?? activeResult.resultText;
-    const isContrast = activeTask.type === 'DEBUG' && resultRows[0]?.id === activeResult.id;
+    const isContrast = activeTask.type === 'DEBUG' && activeTask.debugMode === 'CONTRAST';
     return (
       <div className="flex flex-col h-full bg-white overflow-hidden relative">
         <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={() => setView('RESULTS')} className="text-gray-500 hover:text-gray-800 p-1 rounded-full hover:bg-gray-100 transition-colors">←</button>
-            <h2 className="text-lg font-bold text-gray-900">{activeTask.name} / {activeResult.debuggerName}</h2>
-            <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">{activeTask.version}</span>
+            <div className="flex items-baseline gap-3">
+              <h2 className="text-lg font-bold text-gray-900">结果详情</h2>
+              {activeResult.tokenUsage !== undefined && !isContrast && (
+                <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
+                  消耗Token: {activeResult.tokenUsage}
+                </span>
+              )}
+              {activeResult.latencyMs !== undefined && !isContrast && (
+                <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
+                  响应时长: {activeResult.latencyMs} ms
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-6 pb-24">
+          {!isContrast && (
+             <div className="mb-8 space-y-3">
+                 <label className="block text-sm font-bold text-gray-900">调试器名称</label>
+                 <input
+                     type="text"
+                     value={activeResult.debuggerName || ''}
+                     onChange={(e) => {
+                        // Optional: if we want to allow editing locally, we'd need to update resultRows or activeResult state
+                        // For now, we can just let it be read-only or update activeResult locally
+                        const newName = e.target.value;
+                        setActiveResult({ ...activeResult, debuggerName: newName });
+                     }}
+                     className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
+                     placeholder="请输入调试器名称"
+                 />
+             </div>
+          )}
+
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-3">
               <label className="text-sm font-bold text-gray-900">输入参数</label>
@@ -293,44 +377,56 @@ const TaskList: React.FC = () => {
             </div>
           </div>
 
-          <div className="mb-8 flex items-center justify-between py-2">
-            <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
-            <div onClick={() => setJsonFormatEnabled(!jsonFormatEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
-              <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+          <div className="mb-8 grid grid-cols-2 gap-6">
+            <div className="flex items-center justify-between py-2">
+              <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
+              <div onClick={() => setJsonFormatEnabled(!jsonFormatEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              </div>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <label className="block text-sm font-bold text-gray-900">引用历史</label>
+              <div onClick={() => setReferenceHistoryEnabled(!referenceHistoryEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              </div>
             </div>
           </div>
           {isContrast ? (
             <>
-              <div className="grid grid-cols-2 gap-6 mb-2">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-medium text-gray-900">{resultRows[0]?.debuggerName ?? '—'}</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-medium text-gray-900">{resultRows[1]?.debuggerName ?? '—'}</span>
-                </div>
-              </div>
               <div className="grid grid-cols-2 gap-6 mb-8">
                 <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm font-bold text-gray-900">{resultRows[0]?.debuggerName ?? '调试器A'}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-bold text-gray-900">{resultRows[0]?.debuggerName ?? '调试器A'}</div>
+                      {resultRows[0]?.tokenUsage !== undefined && (
+                        <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
+                          消耗Token: {resultRows[0].tokenUsage}
+                        </span>
+                      )}
+                      {resultRows[0]?.latencyMs !== undefined && (
+                        <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
+                          响应时长: {resultRows[0].latencyMs} ms
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="block text-sm font-bold text-gray-900">模型选择（左）</label>
+                    <label className="block text-sm font-bold text-gray-900">模型选择</label>
                     <select value={model} onChange={(e) => setModel(e.target.value as GeminiModel)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white">
                       <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
                       <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
                     </select>
                   </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-700">系统提示词（左）</label>
+                  <label className="text-xs font-bold text-gray-700">系统提示词</label>
                   <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstruction} onChange={(e) => setSystemInstruction(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-700">用户提示词（左）</label>
+                  <label className="text-xs font-bold text-gray-700">用户提示词</label>
                   <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <div className="text-sm font-bold text-gray-900">调试结果（左）</div>
+                  <div className="text-sm font-bold text-gray-900">调试结果</div>
                   <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
                     {currentResultText ? currentResultText : <span className="text-gray-400">暂无结果</span>}
                   </div>
@@ -338,25 +434,37 @@ const TaskList: React.FC = () => {
               </div>
               <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm font-bold text-gray-900">{resultRows[1]?.debuggerName ?? '调试器B'}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-bold text-gray-900">{resultRows[1]?.debuggerName ?? '调试器B'}</div>
+                    {resultRows[1]?.tokenUsage !== undefined && (
+                      <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
+                        消耗Token: {resultRows[1].tokenUsage}
+                      </span>
+                    )}
+                    {resultRows[1]?.latencyMs !== undefined && (
+                      <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
+                        响应时长: {resultRows[1].latencyMs} ms
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-sm font-bold text-gray-900">模型选择（右）</label>
+                  <label className="block text-sm font-bold text-gray-900">模型选择</label>
                   <select value={modelRight} onChange={(e) => setModelRight(e.target.value as GeminiModel)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white">
                     <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
                     <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-700">系统提示词（右）</label>
+                  <label className="text-xs font-bold text-gray-700">系统提示词</label>
                   <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstructionRight} onChange={(e) => setSystemInstructionRight(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-700">用户提示词（右）</label>
+                  <label className="text-xs font-bold text-gray-700">用户提示词</label>
                   <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPromptRight} onChange={(e) => setUserPromptRight(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <div className="text-sm font-bold text-gray-900">调试结果（右）</div>
+                  <div className="text-sm font-bold text-gray-900">调试结果</div>
                   <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
                     {resultRows[1]?.resultText ? resultRows[1]?.resultText : <span className="text-gray-400">暂无结果</span>}
                   </div>
@@ -406,7 +514,7 @@ const TaskList: React.FC = () => {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任务类型</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调试类型</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调试模式</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任务名称</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">使用集合</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">执行版本</th>
@@ -430,7 +538,7 @@ const TaskList: React.FC = () => {
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-700">
-                  {task.type === 'DEBUG' ? (task.debugMode === 'CONTRAST' ? '对比调试' : '单点调试') : ''}
+                  {task.type === 'DEBUG' ? (task.debugMode === 'CONTRAST' ? '对比调试' : '单点调试') : '-'}
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-900">{task.name}</td>
                 <td className="px-6 py-4 text-sm text-gray-700">{task.collectionName}</td>
@@ -459,11 +567,23 @@ const TaskList: React.FC = () => {
                     <button
                       onClick={() => {
                         setActiveTask(task);
-                        setResultRows([
-                          { id: 'r1', debuggerName: '默认调试器A', resultText: 'OK: 输出匹配预期', latencyMs: 720, status: 'DONE' },
-                          { id: 'r2', debuggerName: '高阶调试器B', resultText: 'PENDING: 等待执行', latencyMs: 0, status: 'PENDING' },
-                          { id: 'r3', debuggerName: '基线调试器', resultText: 'FAILED: 接口报错 500', latencyMs: 300, status: 'FAILED' },
-                        ]);
+                        if (task.type === 'DEBUG' && task.debugMode === 'CONTRAST') {
+                          const names = task.collectionName.split('/').map(s => s.trim());
+                          setResultRows([
+                            { id: 'r1', debuggerName: names[0] || '调试器A', resultText: 'OK: 输出匹配预期', latencyMs: 720, status: 'DONE', sourceMethod: '从调优中心导入', tokenUsage: 1250 },
+                            { id: 'r2', debuggerName: names[1] || '调试器B', resultText: 'FAILED: 接口报错 500', latencyMs: 300, status: 'FAILED', sourceMethod: '从调优中心导入', tokenUsage: 0 },
+                          ]);
+                        } else if (task.type === 'DEBUG' && task.debugMode === 'SINGLE') {
+                          setResultRows([
+                            { id: 'r1', debuggerName: task.collectionName, resultText: 'OK: 输出匹配预期', latencyMs: 720, status: 'DONE', sourceMethod: '手动输入', tokenUsage: 850 },
+                            { id: 'r2', debuggerName: task.collectionName, resultText: 'FAILED: 接口报错 500', latencyMs: 300, status: 'FAILED', sourceMethod: '手动输入', tokenUsage: 0 },
+                          ]);
+                        } else {
+                          setResultRows([
+                            { id: 'r1', debuggerName: task.collectionName, resultText: 'OK: 输出匹配预期', latencyMs: 720, status: 'DONE', sourceMethod: '从调优中心导入', tokenUsage: 1250 },
+                            { id: 'r2', debuggerName: task.collectionName, resultText: 'FAILED: 接口报错 500', latencyMs: 300, status: 'FAILED', sourceMethod: '从调优中心导入', tokenUsage: 0 },
+                          ]);
+                        }
                         setView('RESULTS');
                       }}
                       className="text-gray-700 hover:text-blue-600 text-xs font-medium"
