@@ -81,6 +81,10 @@ const PromptDebugger: React.FC = () => {
   const [contrastLeft, setContrastLeft] = useState<DebuggerConfig | null>(null);
   const [contrastRight, setContrastRight] = useState<DebuggerConfig | null>(null);
   const [debuggerConfigName, setDebuggerConfigName] = useState('');
+  const [primaryLatencyMs, setPrimaryLatencyMs] = useState<number | null>(null);
+  const [primaryTokenUsage, setPrimaryTokenUsage] = useState<number | null>(null);
+  const [contrastLatencyMs, setContrastLatencyMs] = useState<number | null>(null);
+  const [contrastTokenUsage, setContrastTokenUsage] = useState<number | null>(null);
   
   const isCancelledRef = useRef(false);
 
@@ -100,6 +104,8 @@ const PromptDebugger: React.FC = () => {
     }
   };
 
+  
+
   const handleBackToList = () => {
     setView('LIST');
     setActiveItem(null);
@@ -115,8 +121,11 @@ const PromptDebugger: React.FC = () => {
     setIsGenerating(true);
     if (!options?.append) setResponse('');
     isCancelledRef.current = false;
+    setPrimaryLatencyMs(null);
+    setPrimaryTokenUsage(null);
 
     try {
+      const t0 = performance.now();
       const config = {
         temperature,
         topP,
@@ -131,7 +140,12 @@ const PromptDebugger: React.FC = () => {
         if (c.text) {
            setResponse(prev => prev + c.text);
         }
+        const anyChunk: any = c as any;
+        const usage = anyChunk?.usageMetadata?.totalTokenCount;
+        if (typeof usage === 'number') setPrimaryTokenUsage(usage);
       }
+      const t1 = performance.now();
+      setPrimaryLatencyMs(Math.round(t1 - t0));
     } catch (error) {
       setResponse(prev => prev + `\n\nError: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
     } finally {
@@ -248,6 +262,21 @@ const PromptDebugger: React.FC = () => {
 
   const deleteDebugger = (id: string) => {
     setDebuggers(prev => prev.filter(d => d.id !== id));
+  };
+
+  const duplicateDebugger = (dbg: DebuggerConfig) => {
+    setDebuggers(prev => {
+      const idx = prev.findIndex(d => d.id === dbg.id);
+      const newItem: DebuggerConfig = {
+        id: `d${Date.now().toString()}`,
+        name: `${dbg.name}-复制`,
+        model: dbg.model,
+      };
+      if (idx === -1) return [...prev, newItem];
+      const next = [...prev];
+      next.splice(idx + 1, 0, newItem);
+      return next;
+    });
   };
 
   const updateDebuggerModel = (id: string, m: GeminiModel) => {
@@ -443,6 +472,7 @@ const PromptDebugger: React.FC = () => {
                                         >
                                             详情
                                         </button>
+                                        
                                         <button 
                                             onClick={() => handleDelete(item.id)}
                                             className="text-red-600 hover:text-red-800 bg-white hover:bg-red-50 px-3 py-1.5 rounded transition-colors text-xs font-medium border border-gray-200"
@@ -660,10 +690,16 @@ const PromptDebugger: React.FC = () => {
                           编辑
                         </button>
                         <button
+                          onClick={() => duplicateDebugger(dbg)}
+                          className="text-gray-700 hover:text-blue-600 bg-white hover:bg-blue-50 px-3 py-1.5 rounded border border-gray-300 text-xs font-medium flex items-center gap-1"
+                        >
+                          复制
+                        </button>
+                        <button
                           onClick={() => startDebugger(dbg)}
                           className="text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded text-xs font-medium"
                         >
-                          开始执行
+                          创建任务
                         </button>
                         <button
                           onClick={() => deleteDebugger(dbg.id)}
@@ -734,6 +770,14 @@ const PromptDebugger: React.FC = () => {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-gray-700">调试结果</label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium px-2 py-1 rounded bg-blue-50 text-blue-700 border border-blue-100">
+                  消耗Token: {mode === 'PRIMARY' ? (primaryTokenUsage ?? 0) : (contrastTokenUsage ?? 0)}
+                </span>
+                <span className="text-xs font-medium px-2 py-1 rounded bg-green-50 text-green-700 border border-green-100">
+                  响应时长: {mode === 'PRIMARY' ? (primaryLatencyMs ?? 0) : (contrastLatencyMs ?? 0)} ms
+                </span>
+              </div>
             </div>
             <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
               {mode === 'PRIMARY' ? (
@@ -930,11 +974,25 @@ const PromptDebugger: React.FC = () => {
             <div className="space-y-4">
                 {debugMode === 'CONTRAST' && (
                   <div className="grid grid-cols-2 gap-6 mb-2">
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex items-baseline justify-between gap-2">
                       <span className="text-sm font-medium text-gray-900">{contrastLeft?.name ?? '—'}</span>
+                      <button
+                        onClick={() => alert('保存成功！')}
+                        className="text-blue-600 bg-white hover:bg-blue-50 border border-blue-600 px-3 py-1.5 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-xs"
+                      >
+                        <Save size={14} />
+                        保存
+                      </button>
                     </div>
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex items-baseline justify-between gap-2">
                       <span className="text-sm font-medium text-gray-900">{contrastRight?.name ?? '—'}</span>
+                      <button
+                        onClick={() => alert('保存成功！')}
+                        className="text-blue-600 bg-white hover:bg-blue-50 border border-blue-600 px-3 py-1.5 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-xs"
+                      >
+                        <Save size={14} />
+                        保存
+                      </button>
                     </div>
                   </div>
                 )}
@@ -975,7 +1033,7 @@ const PromptDebugger: React.FC = () => {
                         className="text-blue-600 bg-white hover:bg-blue-50 border border-blue-600 px-4 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-sm"
                     >
                         <Play size={16} />
-                        开始执行
+                        创建任务
                     </button>
                 ) : (
                     <button
@@ -1005,7 +1063,7 @@ const PromptDebugger: React.FC = () => {
                     }`}
                     >
                     <Play size={16} fill="currentColor" />
-                    运行调试
+                    调试
                     </button>
                 )}
             </div>

@@ -301,21 +301,11 @@ const TaskList: React.FC = () => {
     const isContrast = activeTask.type === 'DEBUG' && activeTask.debugMode === 'CONTRAST';
     return (
       <div className="flex flex-col h-full bg-white overflow-hidden relative">
-        <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+            <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={() => setView('RESULTS')} className="text-gray-500 hover:text-gray-800 p-1 rounded-full hover:bg-gray-100 transition-colors">←</button>
             <div className="flex items-baseline gap-3">
               <h2 className="text-lg font-bold text-gray-900">结果详情</h2>
-              {activeResult.tokenUsage !== undefined && !isContrast && (
-                <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
-                  消耗Token: {activeResult.tokenUsage}
-                </span>
-              )}
-              {activeResult.latencyMs !== undefined && !isContrast && (
-                <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
-                  响应时长: {activeResult.latencyMs} ms
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -396,18 +386,8 @@ const TaskList: React.FC = () => {
               <div className="grid grid-cols-2 gap-6 mb-8">
                 <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                       <div className="text-sm font-bold text-gray-900">{resultRows[0]?.debuggerName ?? '调试器A'}</div>
-                      {resultRows[0]?.tokenUsage !== undefined && (
-                        <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
-                          消耗Token: {resultRows[0].tokenUsage}
-                        </span>
-                      )}
-                      {resultRows[0]?.latencyMs !== undefined && (
-                        <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
-                          响应时长: {resultRows[0].latencyMs} ms
-                        </span>
-                      )}
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -426,7 +406,21 @@ const TaskList: React.FC = () => {
                   <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <div className="text-sm font-bold text-gray-900">调试结果</div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-bold text-gray-900">调试结果</div>
+                    <div className="flex items-center gap-2">
+                      {resultRows[0]?.tokenUsage !== undefined && (
+                        <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
+                          消耗Token: {resultRows[0].tokenUsage}
+                        </span>
+                      )}
+                      {resultRows[0]?.latencyMs !== undefined && (
+                        <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
+                          响应时长: {resultRows[0].latencyMs} ms
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
                     {currentResultText ? currentResultText : <span className="text-gray-400">暂无结果</span>}
                   </div>
@@ -436,16 +430,6 @@ const TaskList: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="text-sm font-bold text-gray-900">{resultRows[1]?.debuggerName ?? '调试器B'}</div>
-                    {resultRows[1]?.tokenUsage !== undefined && (
-                      <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
-                        消耗Token: {resultRows[1].tokenUsage}
-                      </span>
-                    )}
-                    {resultRows[1]?.latencyMs !== undefined && (
-                      <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
-                        响应时长: {resultRows[1].latencyMs} ms
-                      </span>
-                    )}
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -464,7 +448,21 @@ const TaskList: React.FC = () => {
                   <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPromptRight} onChange={(e) => setUserPromptRight(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <div className="text-sm font-bold text-gray-900">调试结果</div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-bold text-gray-900">调试结果</div>
+                    <div className="flex items-center gap-2">
+                      {resultRows[1]?.tokenUsage !== undefined && (
+                        <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
+                          消耗Token: {resultRows[1].tokenUsage}
+                        </span>
+                      )}
+                      {resultRows[1]?.latencyMs !== undefined && (
+                        <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
+                          响应时长: {resultRows[1].latencyMs} ms
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
                     {resultRows[1]?.resultText ? resultRows[1]?.resultText : <span className="text-gray-400">暂无结果</span>}
                   </div>
@@ -491,7 +489,21 @@ const TaskList: React.FC = () => {
                   <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <div className="text-sm font-bold text-gray-900">调试结果</div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-bold text-gray-900">调试结果</div>
+                    <div className="flex items-center gap-2">
+                      {activeResult.tokenUsage !== undefined && (
+                        <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
+                          消耗Token: {activeResult.tokenUsage}
+                        </span>
+                      )}
+                      {activeResult.latencyMs !== undefined && (
+                        <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
+                          响应时长: {activeResult.latencyMs} ms
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
                     {currentResultText ? currentResultText : <span className="text-gray-400">暂无结果</span>}
                   </div>
