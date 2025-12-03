@@ -48,8 +48,11 @@ const PromptDebugger: React.FC = () => {
   const [model, setModel] = useState<GeminiModel>(GeminiModel.FLASH);
   const [modelRight, setModelRight] = useState<GeminiModel>(GeminiModel.PRO);
   const [systemInstruction, setSystemInstruction] = useState('');
+  const [systemInstructionRight, setSystemInstructionRight] = useState('');
   const [userPrompt, setUserPrompt] = useState('Explain quantum computing to a 5-year-old.');
+  const [userPromptRight, setUserPromptRight] = useState('Explain quantum computing to a 5-year-old.');
   const [response, setResponse] = useState('');
+  const [responseRight, setResponseRight] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -57,13 +60,21 @@ const PromptDebugger: React.FC = () => {
   const [debugMode, setDebugMode] = useState<'SINGLE' | 'CONTRAST'>('SINGLE');
   const [addMethod, setAddMethod] = useState<'MANUAL' | 'IMPORT'>('MANUAL');
   const [inputParams, setInputParams] = useState<InputParam[]>([]);
+  const [inputParamsRight, setInputParamsRight] = useState<InputParam[]>([]);
   const [kbName, setKbName] = useState('');
+  const [kbNameRight, setKbNameRight] = useState('');
   const [toolCallCount, setToolCallCount] = useState<number>(0);
+  const [toolCallCountRight, setToolCallCountRight] = useState<number>(0);
   const [temperature, setTemperature] = useState<number>(0.7);
+  const [temperatureRight, setTemperatureRight] = useState<number>(0.7);
   const [topP, setTopP] = useState<number>(0.95);
+  const [topPRight, setTopPRight] = useState<number>(0.95);
   const [referenceHistoryEnabled, setReferenceHistoryEnabled] = useState(false);
+  const [referenceHistoryEnabledRight, setReferenceHistoryEnabledRight] = useState(false);
   const [jsonFormatEnabled, setJsonFormatEnabled] = useState(false);
+  const [jsonFormatEnabledRight, setJsonFormatEnabledRight] = useState(false);
   const [jsonParams, setJsonParams] = useState<InputParam[]>([]);
+  const [jsonParamsRight, setJsonParamsRight] = useState<InputParam[]>([]);
   const [debuggers, setDebuggers] = useState<DebuggerConfig[]>([]);
   const [editingDebuggerId, setEditingDebuggerId] = useState<string | null>(null);
   const [selectedDebuggerIds, setSelectedDebuggerIds] = useState<string[]>([]);
@@ -116,38 +127,68 @@ const PromptDebugger: React.FC = () => {
   };
 
   const handleRun = async (options?: { append?: boolean }) => {
-    if (!userPrompt.trim()) return;
+    if (debugMode === 'SINGLE' && !userPrompt.trim()) return;
+    if (debugMode === 'CONTRAST' && (!userPrompt.trim() && !userPromptRight.trim())) return;
 
     setIsGenerating(true);
     if (!options?.append) setResponse('');
+    if (debugMode === 'CONTRAST' && !options?.append) setResponseRight('');
+    
     isCancelledRef.current = false;
     setPrimaryLatencyMs(null);
     setPrimaryTokenUsage(null);
+    setContrastLatencyMs(null);
+    setContrastTokenUsage(null);
 
     try {
-      const t0 = performance.now();
-      const config = {
-        temperature,
-        topP,
-        responseMimeType: jsonFormatEnabled ? 'application/json' : undefined,
+      const runPrimary = async () => {
+        if (!userPrompt.trim()) return;
+        const t0 = performance.now();
+        const config = {
+          temperature,
+          topP,
+          responseMimeType: jsonFormatEnabled ? 'application/json' : undefined,
+        };
+        const stream = await generateContentStream(model, userPrompt, systemInstruction, config);
+        for await (const chunk of stream) {
+          if (isCancelledRef.current) break;
+          const c = chunk as GenerateContentResponse;
+          if (c.text) setResponse(prev => prev + c.text);
+          const anyChunk: any = c as any;
+          const usage = anyChunk?.usageMetadata?.totalTokenCount;
+          if (typeof usage === 'number') setPrimaryTokenUsage(usage);
+        }
+        const t1 = performance.now();
+        setPrimaryLatencyMs(Math.round(t1 - t0));
       };
 
-      const stream = await generateContentStream(model, userPrompt, systemInstruction, config);
-      
-      for await (const chunk of stream) {
-        if (isCancelledRef.current) break;
-        const c = chunk as GenerateContentResponse;
-        if (c.text) {
-           setResponse(prev => prev + c.text);
+      const runContrast = async () => {
+        if (debugMode !== 'CONTRAST' || !userPromptRight.trim()) return;
+        const t0 = performance.now();
+        const config = {
+          temperature: temperatureRight,
+          topP: topPRight,
+          responseMimeType: jsonFormatEnabledRight ? 'application/json' : undefined,
+        };
+        const stream = await generateContentStream(modelRight, userPromptRight, systemInstructionRight, config);
+        for await (const chunk of stream) {
+          if (isCancelledRef.current) break;
+          const c = chunk as GenerateContentResponse;
+          if (c.text) setResponseRight(prev => prev + c.text);
+          const anyChunk: any = c as any;
+          const usage = anyChunk?.usageMetadata?.totalTokenCount;
+          if (typeof usage === 'number') setContrastTokenUsage(usage);
         }
-        const anyChunk: any = c as any;
-        const usage = anyChunk?.usageMetadata?.totalTokenCount;
-        if (typeof usage === 'number') setPrimaryTokenUsage(usage);
-      }
-      const t1 = performance.now();
-      setPrimaryLatencyMs(Math.round(t1 - t0));
+        const t1 = performance.now();
+        setContrastLatencyMs(Math.round(t1 - t0));
+      };
+
+      await Promise.all([runPrimary(), runContrast()]);
     } catch (error) {
       setResponse(prev => prev + `\n\nError: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+      if (debugMode === 'CONTRAST') {
+         setResponseRight(prev => prev + `\n\nError: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -173,16 +214,25 @@ const PromptDebugger: React.FC = () => {
   const enterEdit = (item: DebuggerItem, m?: GeminiModel, mode?: 'SINGLE' | 'CONTRAST') => {
     setActiveItem(item);
     setSystemInstruction(`You are the ${item.name}.`);
+    setSystemInstructionRight(`You are the ${item.name}.`);
     setDebugMode(mode ?? 'SINGLE');
     setAddMethod('MANUAL');
     setInputParams([{ id: Date.now().toString(), name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' }]);
+    setInputParamsRight([{ id: Date.now().toString(), name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' }]);
     setKbName('');
+    setKbNameRight('');
     setToolCallCount(0);
+    setToolCallCountRight(0);
     setTemperature(0.7);
+    setTemperatureRight(0.7);
     setTopP(0.95);
+    setTopPRight(0.95);
     setReferenceHistoryEnabled(false);
+    setReferenceHistoryEnabledRight(false);
     setJsonFormatEnabled(false);
+    setJsonFormatEnabledRight(false);
     setJsonParams([]);
+    setJsonParamsRight([]);
     setPendingAction(null);
     if (m) setModel(m);
     if (mode === 'SINGLE') {
@@ -724,24 +774,141 @@ const PromptDebugger: React.FC = () => {
   const renderDebugPanel = (mode: 'PRIMARY' | 'CONTRAST') => {
     const currentModel = mode === 'PRIMARY' ? model : modelRight;
     const setCurrentModel = mode === 'PRIMARY' ? setModel : setModelRight;
+    const isPrimary = mode === 'PRIMARY';
 
     return (
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         <div className="p-4 space-y-4">
+          {/* Input Params */}
+          <div className="space-y-2">
+             <div className="flex items-center gap-2">
+                <label className="text-sm font-bold text-gray-900">输入参数</label>
+                <span className="text-xs text-gray-400 font-normal">定义Prompt中的变量</span>
+             </div>
+             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                 {renderParamBuilder(
+                   isPrimary ? inputParams : inputParamsRight,
+                   isPrimary ? setInputParams : setInputParamsRight,
+                   '添加输入'
+                 )}
+             </div>
+          </div>
+
+          {/* Tools & Model Config */}
+          <div className="grid grid-cols-2 gap-4">
+              {/* Tools */}
+              <div className="space-y-3">
+                  <label className="block text-sm font-bold text-gray-900">工具设置</label>
+                  <div className="space-y-3">
+                      <input
+                        type="text"
+                        value={isPrimary ? kbName : kbNameRight}
+                        onChange={(e) => isPrimary ? setKbName(e.target.value) : setKbNameRight(e.target.value)}
+                        placeholder="知识库名称"
+                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border"
+                      />
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-500 whitespace-nowrap">调用次数:</span>
+                        <input
+                          type="number"
+                          value={isPrimary ? toolCallCount : toolCallCountRight}
+                          onChange={(e) => {
+                              const val = parseInt(e.target.value) || 0;
+                              isPrimary ? setToolCallCount(val) : setToolCallCountRight(val);
+                          }}
+                          className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 border"
+                        />
+                      </div>
+                  </div>
+              </div>
+
+              {/* Params */}
+              <div className="space-y-3">
+                  <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                          <label className="block text-xs font-bold text-gray-900">Temperature</label>
+                          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-1.5 rounded">{isPrimary ? temperature : temperatureRight}</span>
+                      </div>
+                      <input
+                          type="range" min="0" max="1" step="0.1"
+                          value={isPrimary ? temperature : temperatureRight}
+                          onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              isPrimary ? setTemperature(val) : setTemperatureRight(val);
+                          }}
+                          className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                  </div>
+                  <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                          <label className="block text-xs font-bold text-gray-900">Top P</label>
+                          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-1.5 rounded">{isPrimary ? topP : topPRight}</span>
+                      </div>
+                      <input
+                          type="range" min="0" max="1" step="0.05"
+                          value={isPrimary ? topP : topPRight}
+                          onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              isPrimary ? setTopP(val) : setTopPRight(val);
+                          }}
+                          className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                  </div>
+              </div>
+          </div>
+
+          {/* Toggles */}
+          <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center justify-between">
+                  <label className="block text-sm font-bold text-gray-900">JSON输出</label>
+                  <div
+                      onClick={() => isPrimary ? setJsonFormatEnabled(!jsonFormatEnabled) : setJsonFormatEnabledRight(!jsonFormatEnabledRight)}
+                      className={`relative w-9 h-5 transition-colors rounded-full cursor-pointer ${
+                          (isPrimary ? jsonFormatEnabled : jsonFormatEnabledRight) ? 'bg-blue-600' : 'bg-gray-200'
+                      }`}
+                  >
+                      <span className={`absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full shadow-sm transition-transform duration-200 transform ${
+                          (isPrimary ? jsonFormatEnabled : jsonFormatEnabledRight) ? 'translate-x-4' : 'translate-x-0'
+                      }`} />
+                  </div>
+              </div>
+              <div className="flex items-center justify-between">
+                  <label className="block text-sm font-bold text-gray-900">引用历史</label>
+                  <div
+                      onClick={() => isPrimary ? setReferenceHistoryEnabled(!referenceHistoryEnabled) : setReferenceHistoryEnabledRight(!referenceHistoryEnabledRight)}
+                      className={`relative w-9 h-5 transition-colors rounded-full cursor-pointer ${
+                          (isPrimary ? referenceHistoryEnabled : referenceHistoryEnabledRight) ? 'bg-blue-600' : 'bg-gray-200'
+                      }`}
+                  >
+                      <span className={`absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full shadow-sm transition-transform duration-200 transform ${
+                          (isPrimary ? referenceHistoryEnabled : referenceHistoryEnabledRight) ? 'translate-x-4' : 'translate-x-0'
+                      }`} />
+                  </div>
+              </div>
+          </div>
+          {(isPrimary ? jsonFormatEnabled : jsonFormatEnabledRight) && (
+            <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 mt-2">
+                <h4 className="text-xs font-semibold text-blue-800 mb-2 uppercase tracking-wide">Schema Definition</h4>
+                {renderParamBuilder(
+                    isPrimary ? jsonParams : jsonParamsRight,
+                    isPrimary ? setJsonParams : setJsonParamsRight,
+                    '添加Schema字段'
+                )}
+            </div>
+          )}
+
           {/* Model Selection (Inside Panel - Only for CONTRAST mode) */}
-          {debugMode === 'CONTRAST' && (
-            <div className="space-y-2">
-               <label className="text-xs font-bold text-gray-700">模型选择</label>
-               <select
+          <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-700">模型选择</label>
+              <select
                   value={currentModel}
                   onChange={(e) => setCurrentModel(e.target.value as GeminiModel)}
                   className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white"
-               >
+              >
                   <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
                   <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
-               </select>
-            </div>
-          )}
+              </select>
+          </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -750,9 +917,8 @@ const PromptDebugger: React.FC = () => {
             <textarea
               className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm leading-relaxed"
               placeholder="You are a helpful assistant..."
-              value={mode === 'PRIMARY' ? systemInstruction : ''}
-              onChange={(e) => mode === 'PRIMARY' && setSystemInstruction(e.target.value)}
-              readOnly={mode === 'CONTRAST'}
+              value={isPrimary ? systemInstruction : systemInstructionRight}
+              onChange={(e) => isPrimary ? setSystemInstruction(e.target.value) : setSystemInstructionRight(e.target.value)}
             />
           </div>
 
@@ -761,9 +927,8 @@ const PromptDebugger: React.FC = () => {
             <textarea
               className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm leading-relaxed"
               placeholder="输入具体内容来测试Prompt..."
-              value={mode === 'PRIMARY' ? userPrompt : ''}
-              onChange={(e) => mode === 'PRIMARY' && setUserPrompt(e.target.value)}
-              readOnly={mode === 'CONTRAST'}
+              value={isPrimary ? userPrompt : userPromptRight}
+              onChange={(e) => isPrimary ? setUserPrompt(e.target.value) : setUserPromptRight(e.target.value)}
             />
           </div>
 
@@ -780,21 +945,13 @@ const PromptDebugger: React.FC = () => {
               </div>
             </div>
             <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
-              {mode === 'PRIMARY' ? (
-                isGenerating ? (
+              {isGenerating ? (
                   <div className="flex items-center gap-2 text-gray-500">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
                     Generating...
                   </div>
-                ) : response ? (
-                  response
-                ) : (
-                  <span className="text-gray-400">输入该用例的标准答案...</span>
-                )
               ) : (
-                <div className="h-full flex items-center justify-center text-gray-400 text-sm">
-                  对比输出将显示在此
-                </div>
+                (isPrimary ? response : responseRight) || <span className="text-gray-400">暂无结果...</span>
               )}
             </div>
           </div>
@@ -856,114 +1013,118 @@ const PromptDebugger: React.FC = () => {
             )}
 
             {/* 1. Input Parameters */}
-            <div className="mb-8">
-                 <div className="flex items-center gap-2 mb-3">
-                    <label className="text-sm font-bold text-gray-900">输入参数</label>
-                    <span className="text-xs text-gray-400 font-normal">定义Prompt中的变量</span>
-                 </div>
-                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
-                     {renderParamBuilder(inputParams, setInputParams, '添加输入')}
-                 </div>
-            </div>
+            {debugMode === 'SINGLE' && (
+              <div className="mb-8">
+                  <div className="flex items-center gap-2 mb-3">
+                      <label className="text-sm font-bold text-gray-900">输入参数</label>
+                      <span className="text-xs text-gray-400 font-normal">定义Prompt中的变量</span>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
+                      {renderParamBuilder(inputParams, setInputParams, '添加输入')}
+                  </div>
+              </div>
+            )}
 
             {/* 2. Configuration Grid */}
-            <div className="grid grid-cols-2 gap-x-12 gap-y-8 mb-8">
-                 {/* Model Selection - Only for SINGLE mode */}
-                 {debugMode === 'SINGLE' && (
-                    <div className="space-y-3">
-                        <label className="block text-sm font-bold text-gray-900">模型选择</label>
-                        <select
-                            value={model}
-                            onChange={(e) => setModel(e.target.value as GeminiModel)}
-                            className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white"
-                        >
-                            <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
-                            <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
-                        </select>
-                    </div>
-                 )}
-                 {/* Tools Settings */}
-                 <div className="space-y-3">
-                    <label className="block text-sm font-bold text-gray-900">工具设置</label>
-                    <div className="space-y-3">
-                       <input
-                         type="text"
-                         value={kbName}
-                         onChange={(e) => setKbName(e.target.value)}
-                         placeholder="知识库名称"
-                         className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
-                       />
-                       <div className="flex items-center gap-3">
-                          <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
-                          <input
-                            type="number"
-                            value={toolCallCount}
-                            onChange={(e) => setToolCallCount(parseInt(e.target.value) || 0)}
-                            className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border"
-                          />
-                       </div>
-                    </div>
-                 </div>
-
-                 {/* Temperature */}
-                 <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                        <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
-                        <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperature}</span>
-                    </div>
-                    <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={temperature}
-                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                        className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
-                 </div>
-
-                 {/* Top P */}
-                 <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                        <label className="block text-sm font-bold text-gray-900">Top P</label>
-                        <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topP}</span>
-                    </div>
-                    <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={topP}
-                        onChange={(e) => setTopP(parseFloat(e.target.value))}
-                        className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
-                 </div>
-
-                 {/* Reference History Switch */}
-                 <div className="space-y-3">
-                    <div className="flex justify-between items-center h-full">
-                        <label className="block text-sm font-bold text-gray-900">引用历史</label>
-                        <div
-                            onClick={() => setReferenceHistoryEnabled(!referenceHistoryEnabled)}
-                            className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
-                        >
-                            <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+            {debugMode === 'SINGLE' && (
+              <div className="grid grid-cols-2 gap-x-12 gap-y-8 mb-8">
+                  {/* Model Selection - Only for SINGLE mode */}
+                  <div className="space-y-3">
+                      <label className="block text-sm font-bold text-gray-900">模型选择</label>
+                      <select
+                          value={model}
+                          onChange={(e) => setModel(e.target.value as GeminiModel)}
+                          className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white"
+                      >
+                          <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
+                          <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
+                      </select>
+                  </div>
+                  {/* Tools Settings */}
+                  <div className="space-y-3">
+                      <label className="block text-sm font-bold text-gray-900">工具设置</label>
+                      <div className="space-y-3">
+                        <input
+                          type="text"
+                          value={kbName}
+                          onChange={(e) => setKbName(e.target.value)}
+                          placeholder="知识库名称"
+                          className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
+                        />
+                        <div className="flex items-center gap-3">
+                            <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
+                            <input
+                              type="number"
+                              value={toolCallCount}
+                              onChange={(e) => setToolCallCount(parseInt(e.target.value) || 0)}
+                              className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border"
+                            />
                         </div>
-                    </div>
-                 </div>
-            </div>
+                      </div>
+                  </div>
+
+                  {/* Temperature */}
+                  <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                          <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
+                          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperature}</span>
+                      </div>
+                      <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.1"
+                          value={temperature}
+                          onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                          className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                  </div>
+
+                  {/* Top P */}
+                  <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                          <label className="block text-sm font-bold text-gray-900">Top P</label>
+                          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topP}</span>
+                      </div>
+                      <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={topP}
+                          onChange={(e) => setTopP(parseFloat(e.target.value))}
+                          className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                  </div>
+
+                  {/* Reference History Switch */}
+                  <div className="space-y-3">
+                      <div className="flex justify-between items-center h-full">
+                          <label className="block text-sm font-bold text-gray-900">引用历史</label>
+                          <div
+                              onClick={() => setReferenceHistoryEnabled(!referenceHistoryEnabled)}
+                              className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
+                          >
+                              <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                          </div>
+                      </div>
+                  </div>
+              </div>
+            )}
 
             {/* 3. JSON Output Switch */}
-            <div className="mb-8 flex items-center justify-between py-2">
-                <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
-                <div
-                    onClick={() => setJsonFormatEnabled(!jsonFormatEnabled)}
-                    className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
-                >
-                    <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                </div>
-            </div>
-            {jsonFormatEnabled && (
+            {debugMode === 'SINGLE' && (
+              <div className="mb-8 flex items-center justify-between py-2">
+                  <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
+                  <div
+                      onClick={() => setJsonFormatEnabled(!jsonFormatEnabled)}
+                      className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
+                  >
+                      <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </div>
+              </div>
+            )}
+            {debugMode === 'SINGLE' && jsonFormatEnabled && (
                 <div className="mb-8 bg-blue-50/50 p-4 rounded-lg border border-blue-100">
                     <h4 className="text-xs font-semibold text-blue-800 mb-2 uppercase tracking-wide">Schema Definition</h4>
                     {renderParamBuilder(jsonParams, setJsonParams, '添加Schema字段')}

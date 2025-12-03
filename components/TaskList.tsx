@@ -135,8 +135,23 @@ const TaskList: React.FC = () => {
   const [referenceHistoryEnabled, setReferenceHistoryEnabled] = useState(false);
   const isCancelledRef = useRef(false);
 
+  const [kbNameLeft, setKbNameLeft] = useState('');
+  const [kbNameRight, setKbNameRight] = useState('');
+  const [toolCallCountLeft, setToolCallCountLeft] = useState<number>(0);
+  const [toolCallCountRight, setToolCallCountRight] = useState<number>(0);
+  const [temperatureLeft, setTemperatureLeft] = useState<number>(0.7);
+  const [temperatureRight, setTemperatureRight] = useState<number>(0.7);
+  const [topPLeft, setTopPLeft] = useState<number>(0.95);
+  const [topPRight, setTopPRight] = useState<number>(0.95);
+  const [jsonFormatEnabledLeft, setJsonFormatEnabledLeft] = useState(false);
+  const [jsonFormatEnabledRight, setJsonFormatEnabledRight] = useState(false);
+  const [referenceHistoryEnabledLeft, setReferenceHistoryEnabledLeft] = useState(false);
+  const [referenceHistoryEnabledRight, setReferenceHistoryEnabledRight] = useState(false);
+
   interface InputParam { id: string; name: string; type: string; source: string; description: string; }
   const [inputParams, setInputParams] = useState<InputParam[]>([{ id: 'p1', name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' }]);
+  const [inputParamsLeft, setInputParamsLeft] = useState<InputParam[]>([{ id: 'lp1', name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' }]);
+  const [inputParamsRight, setInputParamsRight] = useState<InputParam[]>([{ id: 'rp1', name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' }]);
 
   const handleRun = async () => {
     if (!userPrompt.trim()) return;
@@ -328,59 +343,65 @@ const TaskList: React.FC = () => {
              </div>
           )}
 
-          <div className="mb-8">
-            <div className="flex items-center gap-2 mb-3">
-              <label className="text-sm font-bold text-gray-900">输入参数</label>
-              <span className="text-xs text-gray-400">定义Prompt中的变量</span>
+          {!isContrast && (
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-3">
+                <label className="text-sm font-bold text-gray-900">输入参数</label>
+                <span className="text-xs text-gray-400">定义Prompt中的变量</span>
+              </div>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
+                {renderParamBuilder(inputParams, setInputParams, '添加输入')}
+              </div>
             </div>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
-              {renderParamBuilder(inputParams, setInputParams, '添加输入')}
-            </div>
-          </div>
+          )}
 
-          <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-6">
-            <div className="space-y-3">
-              <label className="block text-sm font-bold text-gray-900">工具设置</label>
+          {!isContrast && (
+            <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-6">
               <div className="space-y-3">
-                <input type="text" value={kbName} onChange={(e) => setKbName(e.target.value)} placeholder="知识库名称" className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border" />
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
-                  <input type="number" value={toolCallCount} onChange={(e) => setToolCallCount(parseInt(e.target.value) || 0)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border" />
+                <label className="block text-sm font-bold text-gray-900">工具设置</label>
+                <div className="space-y-3">
+                  <input type="text" value={kbName} onChange={(e) => setKbName(e.target.value)} placeholder="知识库名称" className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border" />
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
+                    <input type="number" value={toolCallCount} onChange={(e) => setToolCallCount(parseInt(e.target.value) || 0)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border" />
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
+                    <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperature}</span>
+                  </div>
+                  <input type="range" min="0" max="1" step="0.1" value={temperature} onChange={(e) => setTemperature(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-sm font-bold text-gray-900">Top P</label>
+                    <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topP}</span>
+                  </div>
+                  <input type="range" min="0" max="1" step="0.05" value={topP} onChange={(e) => setTopP(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                 </div>
               </div>
             </div>
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
-                  <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperature}</span>
-                </div>
-                <input type="range" min="0" max="1" step="0.1" value={temperature} onChange={(e) => setTemperature(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <label className="block text-sm font-bold text-gray-900">Top P</label>
-                  <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topP}</span>
-                </div>
-                <input type="range" min="0" max="1" step="0.05" value={topP} onChange={(e) => setTopP(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-              </div>
-            </div>
-          </div>
+          )}
 
-          <div className="mb-8 grid grid-cols-2 gap-6">
-            <div className="flex items-center justify-between py-2">
-              <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
-              <div onClick={() => setJsonFormatEnabled(!jsonFormatEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
-                <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+          {!isContrast && (
+            <div className="mb-8 grid grid-cols-2 gap-6">
+              <div className="flex items-center justify-between py-2">
+                <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
+                <div onClick={() => setJsonFormatEnabled(!jsonFormatEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                  <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                </div>
+              </div>
+              <div className="flex items-center justify-between py-2">
+                <label className="block text-sm font-bold text-gray-900">引用历史</label>
+                <div onClick={() => setReferenceHistoryEnabled(!referenceHistoryEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                  <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                </div>
               </div>
             </div>
-            <div className="flex items-center justify-between py-2">
-              <label className="block text-sm font-bold text-gray-900">引用历史</label>
-              <div onClick={() => setReferenceHistoryEnabled(!referenceHistoryEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
-                <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-              </div>
-            </div>
-          </div>
+          )}
           {isContrast ? (
             <>
               <div className="grid grid-cols-2 gap-6 mb-8">
@@ -388,6 +409,55 @@ const TaskList: React.FC = () => {
                   <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                       <div className="text-sm font-bold text-gray-900">{resultRows[0]?.debuggerName ?? '调试器A'}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <label className="text-sm font-bold text-gray-900">输入参数A</label>
+                      <span className="text-xs text-gray-400">定义Prompt中的变量</span>
+                    </div>
+                    {renderParamBuilder(inputParamsLeft, setInputParamsLeft, '添加输入A')}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                    <div className="space-y-3">
+                      <label className="block text-sm font-bold text-gray-900">工具设置</label>
+                      <div className="space-y-3">
+                        <input type="text" value={kbNameLeft} onChange={(e) => setKbNameLeft(e.target.value)} placeholder="知识库名称" className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border" />
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
+                          <input type="number" value={toolCallCountLeft} onChange={(e) => setToolCallCountLeft(parseInt(e.target.value) || 0)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-6">
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
+                          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperatureLeft}</span>
+                        </div>
+                        <input type="range" min="0" max="1" step="0.1" value={temperatureLeft} onChange={(e) => setTemperatureLeft(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <label className="block text-sm font-bold text-gray-900">Top P</label>
+                          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topPLeft}</span>
+                        </div>
+                        <input type="range" min="0" max="1" step="0.05" value={topPLeft} onChange={(e) => setTopPLeft(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="flex items-center justify-between py-2">
+                      <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
+                      <div onClick={() => setJsonFormatEnabledLeft(!jsonFormatEnabledLeft)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabledLeft ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                        <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabledLeft ? 'translate-x-5' : 'translate-x-0'}`} />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between py-2">
+                      <label className="block text-sm font-bold text-gray-900">引用历史</label>
+                      <div onClick={() => setReferenceHistoryEnabledLeft(!referenceHistoryEnabledLeft)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabledLeft ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                        <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabledLeft ? 'translate-x-5' : 'translate-x-0'}`} />
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -401,10 +471,10 @@ const TaskList: React.FC = () => {
                   <label className="text-xs font-bold text-gray-700">系统提示词</label>
                   <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstruction} onChange={(e) => setSystemInstruction(e.target.value)} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-700">用户提示词</label>
-                  <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
-                </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-700">用户提示词</label>
+                    <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
+                  </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-bold text-gray-900">调试结果</div>
@@ -430,6 +500,55 @@ const TaskList: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="text-sm font-bold text-gray-900">{resultRows[1]?.debuggerName ?? '调试器B'}</div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="text-sm font-bold text-gray-900">输入参数B</label>
+                    <span className="text-xs text-gray-400">定义Prompt中的变量</span>
+                  </div>
+                  {renderParamBuilder(inputParamsRight, setInputParamsRight, '添加输入B')}
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                  <div className="space-y-3">
+                    <label className="block text-sm font-bold text-gray-900">工具设置</label>
+                    <div className="space-y-3">
+                      <input type="text" value={kbNameRight} onChange={(e) => setKbNameRight(e.target.value)} placeholder="知识库名称" className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border" />
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
+                        <input type="number" value={toolCallCountRight} onChange={(e) => setToolCallCountRight(parseInt(e.target.value) || 0)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
+                        <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperatureRight}</span>
+                      </div>
+                      <input type="range" min="0" max="1" step="0.1" value={temperatureRight} onChange={(e) => setTemperatureRight(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-sm font-bold text-gray-900">Top P</label>
+                        <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topPRight}</span>
+                      </div>
+                      <input type="range" min="0" max="1" step="0.05" value={topPRight} onChange={(e) => setTopPRight(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="flex items-center justify-between py-2">
+                    <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
+                    <div onClick={() => setJsonFormatEnabledRight(!jsonFormatEnabledRight)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabledRight ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                      <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabledRight ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <label className="block text-sm font-bold text-gray-900">引用历史</label>
+                    <div onClick={() => setReferenceHistoryEnabledRight(!referenceHistoryEnabledRight)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabledRight ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                      <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabledRight ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-2">
