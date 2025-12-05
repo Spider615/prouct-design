@@ -26,7 +26,7 @@ const MOCK_TASKS: TaskItem[] = [
     id: 't1',
     name: 'test',
     type: 'DEBUG',
-    collectionName: '调试器A / 调试器B',
+    collectionName: '调试集A',
     version: '9-v1.0.9',
     nodes: ['大模型生成'],
     rounds: 1,
@@ -35,13 +35,13 @@ const MOCK_TASKS: TaskItem[] = [
     progress: 1,
     createdAt: '2025-11-28 10:21',
     debugMode: 'CONTRAST',
-    model: 'Gemini 2.5 Flash / Gemini 3 Pro (Preview)',
+    model: 'Gemini 2.5 Flash',
   },
   {
     id: 't4',
     name: 'test-11111111',
     type: 'DEBUG',
-    collectionName: '调试器B / 调试器C',
+    collectionName: '调试集B',
     version: '9-v1.0.9',
     nodes: ['大模型生成'],
     rounds: 10,
@@ -56,7 +56,7 @@ const MOCK_TASKS: TaskItem[] = [
     id: 't5',
     name: '调试-单点模式测试',
     type: 'DEBUG',
-    collectionName: '调试器C',
+    collectionName: '调试集C',
     version: 'gemini-2.5-flash',
     nodes: ['大模型生成'],
     rounds: 5,
@@ -106,7 +106,6 @@ const TaskList: React.FC = () => {
     resultText: string;
     latencyMs: number;
     status: 'DONE' | 'PENDING' | 'FAILED';
-    sourceMethod?: string;
     tokenUsage?: number;
   } | null>(null);
   const tasks = MOCK_TASKS;
@@ -116,7 +115,6 @@ const TaskList: React.FC = () => {
     resultText: string;
     latencyMs: number;
     status: 'DONE' | 'PENDING' | 'FAILED';
-    sourceMethod?: string;
     tokenUsage?: number;
   }[]>([]);
   const [model, setModel] = useState<GeminiModel>(GeminiModel.FLASH);
@@ -258,11 +256,9 @@ const TaskList: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调试器名称</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调试模式</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调试集名称</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调试用例名称</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">模型</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">数据来源方式</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调试结果</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">响应时长</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">消耗Token</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">执行状态</th>
@@ -275,23 +271,13 @@ const TaskList: React.FC = () => {
                   <td className="px-6 py-4 text-sm text-gray-900">
                     {activeTask.collectionName}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">{activeTask.type === 'DEBUG' ? (activeTask.debugMode === 'CONTRAST' ? '对比调试' : '单点调试') : ''}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{r.debuggerName}</td>
                   <td className="px-6 py-4 text-sm text-gray-700">{activeTask.model}</td>
-                  <td className="px-6 py-4 text-sm text-gray-700">{r.sourceMethod || '-'}</td>
                   <td className="px-6 py-4 text-sm text-gray-700">
-                    {activeTask.type === 'DEBUG' && activeTask.debugMode === 'CONTRAST' && resultRows.length === 2
-                      ? `${resultRows[0].resultText.substring(0, 10)}${resultRows[0].resultText.length > 10 ? '...' : ''} / ${resultRows[1].resultText.substring(0, 10)}${resultRows[1].resultText.length > 10 ? '...' : ''}`
-                      : r.resultText}
+                    {r.latencyMs ? `${r.latencyMs} ms` : '-'}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">
-                    {activeTask.type === 'DEBUG' && activeTask.debugMode === 'CONTRAST' && resultRows.length === 2
-                      ? `${resultRows[0].latencyMs ? `${resultRows[0].latencyMs} ms` : '-'} / ${resultRows[1].latencyMs ? `${resultRows[1].latencyMs} ms` : '-'}`
-                      : (r.latencyMs ? `${r.latencyMs} ms` : '-')}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">
-                    {activeTask.type === 'DEBUG' && activeTask.debugMode === 'CONTRAST' && resultRows.length === 2
-                      ? `${resultRows[0].tokenUsage ?? '-'} / ${resultRows[1].tokenUsage ?? '-'}`
-                      : (r.tokenUsage ?? '-')}
+                    {r.tokenUsage ?? '-'}
                   </td>
                   <td className="px-6 py-4 text-sm">{statusBadge(r.status)}</td>
                   <td className="px-6 py-4 text-sm text-right">
@@ -314,6 +300,29 @@ const TaskList: React.FC = () => {
   if (view === 'RESULT_DETAIL' && activeTask && activeResult) {
     const currentResultText = resultRows.find(r => r.id === activeResult.id)?.resultText ?? activeResult.resultText;
     const isContrast = activeTask.type === 'DEBUG' && activeTask.debugMode === 'CONTRAST';
+    const isRight = isContrast && resultRows.length > 1 && activeResult.id === resultRows[1].id;
+
+    const currentInputParams = isRight ? inputParamsRight : inputParams;
+    const setCurrentInputParams = isRight ? setInputParamsRight : setInputParams;
+    const currentKbName = isRight ? kbNameRight : kbName;
+    const setCurrentKbName = isRight ? setKbNameRight : setKbName;
+    const currentToolCallCount = isRight ? toolCallCountRight : toolCallCount;
+    const setCurrentToolCallCount = isRight ? setToolCallCountRight : setToolCallCount;
+    const currentTemperature = isRight ? temperatureRight : temperature;
+    const setCurrentTemperature = isRight ? setTemperatureRight : setTemperature;
+    const currentTopP = isRight ? topPRight : topP;
+    const setCurrentTopP = isRight ? setTopPRight : setTopP;
+    const currentJsonFormatEnabled = isRight ? jsonFormatEnabledRight : jsonFormatEnabled;
+    const setCurrentJsonFormatEnabled = isRight ? setJsonFormatEnabledRight : setJsonFormatEnabled;
+    const currentReferenceHistoryEnabled = isRight ? referenceHistoryEnabledRight : referenceHistoryEnabled;
+    const setCurrentReferenceHistoryEnabled = isRight ? setReferenceHistoryEnabledRight : setReferenceHistoryEnabled;
+    const currentModel = isRight ? modelRight : model;
+    const setCurrentModel = isRight ? setModelRight : setModel;
+    const currentSystemInstruction = isRight ? systemInstructionRight : systemInstruction;
+    const setCurrentSystemInstruction = isRight ? setSystemInstructionRight : setSystemInstruction;
+    const currentUserPrompt = isRight ? userPromptRight : userPrompt;
+    const setCurrentUserPrompt = isRight ? setUserPromptRight : setUserPrompt;
+
     return (
       <div className="flex flex-col h-full bg-white overflow-hidden relative">
             <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
@@ -321,19 +330,28 @@ const TaskList: React.FC = () => {
             <button onClick={() => setView('RESULTS')} className="text-gray-500 hover:text-gray-800 p-1 rounded-full hover:bg-gray-100 transition-colors">←</button>
             <div className="flex items-baseline gap-3">
               <h2 className="text-lg font-bold text-gray-900">结果详情</h2>
+              <div className="flex items-center gap-2 ml-2">
+                {activeResult.tokenUsage !== undefined && (
+                  <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
+                    消耗Token: {activeResult.tokenUsage}
+                  </span>
+                )}
+                {activeResult.latencyMs !== undefined && (
+                  <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
+                    响应时长: {activeResult.latencyMs} ms
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-6 pb-24">
-          {!isContrast && (
              <div className="mb-8 space-y-3">
                  <label className="block text-sm font-bold text-gray-900">调试器名称</label>
                  <input
                      type="text"
                      value={activeResult.debuggerName || ''}
                      onChange={(e) => {
-                        // Optional: if we want to allow editing locally, we'd need to update resultRows or activeResult state
-                        // For now, we can just let it be read-only or update activeResult locally
                         const newName = e.target.value;
                         setActiveResult({ ...activeResult, debuggerName: newName });
                      }}
@@ -341,29 +359,25 @@ const TaskList: React.FC = () => {
                      placeholder="请输入调试器名称"
                  />
              </div>
-          )}
 
-          {!isContrast && (
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-3">
                 <label className="text-sm font-bold text-gray-900">输入参数</label>
                 <span className="text-xs text-gray-400">定义Prompt中的变量</span>
               </div>
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
-                {renderParamBuilder(inputParams, setInputParams, '添加输入')}
+                {renderParamBuilder(currentInputParams, setCurrentInputParams, '添加输入')}
               </div>
             </div>
-          )}
 
-          {!isContrast && (
             <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-6">
               <div className="space-y-3">
                 <label className="block text-sm font-bold text-gray-900">工具设置</label>
                 <div className="space-y-3">
-                  <input type="text" value={kbName} onChange={(e) => setKbName(e.target.value)} placeholder="知识库名称" className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border" />
+                  <input type="text" value={currentKbName} onChange={(e) => setCurrentKbName(e.target.value)} placeholder="知识库名称" className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border" />
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
-                    <input type="number" value={toolCallCount} onChange={(e) => setToolCallCount(parseInt(e.target.value) || 0)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border" />
+                    <input type="number" value={currentToolCallCount} onChange={(e) => setCurrentToolCallCount(parseInt(e.target.value) || 0)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border" />
                   </div>
                 </div>
               </div>
@@ -371,257 +385,55 @@ const TaskList: React.FC = () => {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
-                    <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperature}</span>
+                    <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{currentTemperature}</span>
                   </div>
-                  <input type="range" min="0" max="1" step="0.1" value={temperature} onChange={(e) => setTemperature(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                  <input type="range" min="0" max="1" step="0.1" value={currentTemperature} onChange={(e) => setCurrentTemperature(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                 </div>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <label className="block text-sm font-bold text-gray-900">Top P</label>
-                    <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topP}</span>
+                    <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{currentTopP}</span>
                   </div>
-                  <input type="range" min="0" max="1" step="0.05" value={topP} onChange={(e) => setTopP(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                  <input type="range" min="0" max="1" step="0.05" value={currentTopP} onChange={(e) => setCurrentTopP(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                 </div>
               </div>
             </div>
-          )}
 
-          {!isContrast && (
             <div className="mb-8 grid grid-cols-2 gap-6">
               <div className="flex items-center justify-between py-2">
                 <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
-                <div onClick={() => setJsonFormatEnabled(!jsonFormatEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
-                  <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                <div onClick={() => setCurrentJsonFormatEnabled(!currentJsonFormatEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${currentJsonFormatEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                  <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${currentJsonFormatEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
                 </div>
               </div>
               <div className="flex items-center justify-between py-2">
                 <label className="block text-sm font-bold text-gray-900">引用历史</label>
-                <div onClick={() => setReferenceHistoryEnabled(!referenceHistoryEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
-                  <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                <div onClick={() => setCurrentReferenceHistoryEnabled(!currentReferenceHistoryEnabled)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${currentReferenceHistoryEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                  <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${currentReferenceHistoryEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
                 </div>
               </div>
             </div>
-          )}
-          {isContrast ? (
-            <>
-              <div className="grid grid-cols-2 gap-6 mb-8">
-                <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                      <div className="text-sm font-bold text-gray-900">{resultRows[0]?.debuggerName ?? '调试器A'}</div>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 mb-2">
-                      <label className="text-sm font-bold text-gray-900">输入参数A</label>
-                      <span className="text-xs text-gray-400">定义Prompt中的变量</span>
-                    </div>
-                    {renderParamBuilder(inputParamsLeft, setInputParamsLeft, '添加输入A')}
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                    <div className="space-y-3">
-                      <label className="block text-sm font-bold text-gray-900">工具设置</label>
-                      <div className="space-y-3">
-                        <input type="text" value={kbNameLeft} onChange={(e) => setKbNameLeft(e.target.value)} placeholder="知识库名称" className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border" />
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
-                          <input type="number" value={toolCallCountLeft} onChange={(e) => setToolCallCountLeft(parseInt(e.target.value) || 0)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border" />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-6">
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
-                          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperatureLeft}</span>
-                        </div>
-                        <input type="range" min="0" max="1" step="0.1" value={temperatureLeft} onChange={(e) => setTemperatureLeft(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <label className="block text-sm font-bold text-gray-900">Top P</label>
-                          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topPLeft}</span>
-                        </div>
-                        <input type="range" min="0" max="1" step="0.05" value={topPLeft} onChange={(e) => setTopPLeft(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="flex items-center justify-between py-2">
-                      <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
-                      <div onClick={() => setJsonFormatEnabledLeft(!jsonFormatEnabledLeft)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabledLeft ? 'bg-blue-600' : 'bg-gray-200'}`}>
-                        <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabledLeft ? 'translate-x-5' : 'translate-x-0'}`} />
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between py-2">
-                      <label className="block text-sm font-bold text-gray-900">引用历史</label>
-                      <div onClick={() => setReferenceHistoryEnabledLeft(!referenceHistoryEnabledLeft)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabledLeft ? 'bg-blue-600' : 'bg-gray-200'}`}>
-                        <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabledLeft ? 'translate-x-5' : 'translate-x-0'}`} />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-bold text-gray-900">模型选择</label>
-                    <select value={model} onChange={(e) => setModel(e.target.value as GeminiModel)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white">
-                      <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
-                      <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
-                    </select>
-                  </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-700">系统提示词</label>
-                  <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstruction} onChange={(e) => setSystemInstruction(e.target.value)} />
-                </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-700">用户提示词</label>
-                    <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
-                  </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-bold text-gray-900">调试结果</div>
-                    <div className="flex items-center gap-2">
-                      {resultRows[0]?.tokenUsage !== undefined && (
-                        <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
-                          消耗Token: {resultRows[0].tokenUsage}
-                        </span>
-                      )}
-                      {resultRows[0]?.latencyMs !== undefined && (
-                        <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
-                          响应时长: {resultRows[0].latencyMs} ms
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
-                    {currentResultText ? currentResultText : <span className="text-gray-400">暂无结果</span>}
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-bold text-gray-900">{resultRows[1]?.debuggerName ?? '调试器B'}</div>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 mb-2">
-                    <label className="text-sm font-bold text-gray-900">输入参数B</label>
-                    <span className="text-xs text-gray-400">定义Prompt中的变量</span>
-                  </div>
-                  {renderParamBuilder(inputParamsRight, setInputParamsRight, '添加输入B')}
-                </div>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                  <div className="space-y-3">
-                    <label className="block text-sm font-bold text-gray-900">工具设置</label>
-                    <div className="space-y-3">
-                      <input type="text" value={kbNameRight} onChange={(e) => setKbNameRight(e.target.value)} placeholder="知识库名称" className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border" />
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
-                        <input type="number" value={toolCallCountRight} onChange={(e) => setToolCallCountRight(parseInt(e.target.value) || 0)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border" />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="space-y-6">
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
-                        <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperatureRight}</span>
-                      </div>
-                      <input type="range" min="0" max="1" step="0.1" value={temperatureRight} onChange={(e) => setTemperatureRight(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                    </div>
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <label className="block text-sm font-bold text-gray-900">Top P</label>
-                        <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topPRight}</span>
-                      </div>
-                      <input type="range" min="0" max="1" step="0.05" value={topPRight} onChange={(e) => setTopPRight(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="flex items-center justify-between py-2">
-                    <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
-                    <div onClick={() => setJsonFormatEnabledRight(!jsonFormatEnabledRight)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabledRight ? 'bg-blue-600' : 'bg-gray-200'}`}>
-                      <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabledRight ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between py-2">
-                    <label className="block text-sm font-bold text-gray-900">引用历史</label>
-                    <div onClick={() => setReferenceHistoryEnabledRight(!referenceHistoryEnabledRight)} className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabledRight ? 'bg-blue-600' : 'bg-gray-200'}`}>
-                      <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabledRight ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-bold text-gray-900">模型选择</label>
-                  <select value={modelRight} onChange={(e) => setModelRight(e.target.value as GeminiModel)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white">
-                    <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
-                    <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-700">系统提示词</label>
-                  <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstructionRight} onChange={(e) => setSystemInstructionRight(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-700">用户提示词</label>
-                  <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPromptRight} onChange={(e) => setUserPromptRight(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-bold text-gray-900">调试结果</div>
-                    <div className="flex items-center gap-2">
-                      {resultRows[1]?.tokenUsage !== undefined && (
-                        <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
-                          消耗Token: {resultRows[1].tokenUsage}
-                        </span>
-                      )}
-                      {resultRows[1]?.latencyMs !== undefined && (
-                        <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
-                          响应时长: {resultRows[1].latencyMs} ms
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
-                    {resultRows[1]?.resultText ? resultRows[1]?.resultText : <span className="text-gray-400">暂无结果</span>}
-                  </div>
-                </div>
-              </div>
-            </div>
-            </>
-          ) : (
+
             <div className="mb-8">
               <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
                 <div className="space-y-2">
                   <label className="block text-sm font-bold text-gray-900">模型选择</label>
-                  <select value={model} onChange={(e) => setModel(e.target.value as GeminiModel)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white">
+                  <select value={currentModel} onChange={(e) => setCurrentModel(e.target.value as GeminiModel)} className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white">
                     <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
                     <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
                   </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-700">系统提示词</label>
-                  <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={systemInstruction} onChange={(e) => setSystemInstruction(e.target.value)} />
+                  <textarea className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="You are a helpful assistant..." value={currentSystemInstruction} onChange={(e) => setCurrentSystemInstruction(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-700">用户提示词</label>
-                  <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
+                  <textarea className="w-full h-24 p-3 text-base border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" placeholder="输入具体内容来测试Prompt..." value={currentUserPrompt} onChange={(e) => setCurrentUserPrompt(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-bold text-gray-900">调试结果</div>
-                    <div className="flex items-center gap-2">
-                      {activeResult.tokenUsage !== undefined && (
-                        <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded border border-blue-100">
-                          消耗Token: {activeResult.tokenUsage}
-                        </span>
-                      )}
-                      {activeResult.latencyMs !== undefined && (
-                        <span className="px-2.5 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded border border-green-100">
-                          响应时长: {activeResult.latencyMs} ms
-                        </span>
-                      )}
-                    </div>
                   </div>
                   <div className="w-full min-h-[160px] p-3 border border-gray-300 rounded-lg bg-white shadow-sm font-mono text-sm whitespace-pre-wrap text-gray-800">
                     {currentResultText ? currentResultText : <span className="text-gray-400">暂无结果</span>}
@@ -629,10 +441,6 @@ const TaskList: React.FC = () => {
                 </div>
               </div>
             </div>
-          )}
-          
-          
-          
         </div>
       </div>
     );
@@ -645,7 +453,6 @@ const TaskList: React.FC = () => {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任务类型</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调试模式</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任务名称</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">使用集合</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">执行版本</th>
@@ -668,9 +475,6 @@ const TaskList: React.FC = () => {
                     {task.type === 'TEST' ? '测试' : '调试'}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-700">
-                  {task.type === 'DEBUG' ? (task.debugMode === 'CONTRAST' ? '对比调试' : '单点调试') : '-'}
-                </td>
                 <td className="px-6 py-4 text-sm text-gray-900">{task.name}</td>
                 <td className="px-6 py-4 text-sm text-gray-700">{task.collectionName}</td>
                 <td className="px-6 py-4 text-sm text-gray-700">{task.version}</td>
@@ -684,7 +488,7 @@ const TaskList: React.FC = () => {
                   </div>
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-700">{task.rounds}</td>
-                <td className="px-6 py-4 text-sm text-gray-700">{rateText(task.passRate)}</td>
+                <td className="px-6 py-4 text-sm text-gray-700">{task.type === 'DEBUG' ? '-' : rateText(task.passRate)}</td>
                 <td className="px-6 py-4 text-sm text-gray-700">{latencyText(task.avgLatencyMs)}</td>
                 <td className="px-6 py-4 text-sm text-gray-700">
                   <div className="w-40 h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -694,7 +498,9 @@ const TaskList: React.FC = () => {
                 <td className="px-6 py-4 text-sm text-gray-700">{task.createdAt}</td>
                 <td className="px-6 py-4 text-sm text-right">
                   <div className="flex items-center justify-end gap-3">
-                    <button className="text-blue-600 hover:text-blue-800 text-xs font-medium">测评报告</button>
+                    {task.type === 'TEST' && (
+                      <button className="text-blue-600 hover:text-blue-800 text-xs font-medium">测评报告</button>
+                    )}
                     <button
                       onClick={() => {
                         setActiveTask(task);

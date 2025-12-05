@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { 
-  Play, Sparkles, Trash2, StopCircle, Settings2, Copy, Check, 
-  ArrowLeft, TerminalSquare, Activity, Plus, X, ChevronRight, ChevronDown, Save
+  Play, Trash2, StopCircle, 
+  ArrowLeft, TerminalSquare, Activity, Plus, X, Save, Search
 } from 'lucide-react';
 import { generateContentStream } from '../services/geminiService';
 import { GeminiModel } from '../types';
@@ -14,7 +14,6 @@ interface DebuggerItem {
   version: string;
   node: string;
   updatedAt: string;
-  sourceMethod: 'MANUAL' | 'IMPORT';
 }
 
 interface InputParam {
@@ -26,16 +25,17 @@ interface InputParam {
 }
 
 const INITIAL_DATA: DebuggerItem[] = [
-  { id: '1', name: '电商客服助手', version: 'v1.2.0', node: 'Intent-Analysis', updatedAt: '2023-10-24', sourceMethod: 'MANUAL' },
-  { id: '2', name: '文案润色专家', version: 'v0.8.5', node: 'Style-Transfer', updatedAt: '2023-10-22', sourceMethod: 'IMPORT' },
-  { id: '3', name: 'Python代码生成', version: 'v2.1.0', node: 'Code-Block', updatedAt: '2023-10-20', sourceMethod: 'MANUAL' },
-  { id: '4', name: '通用摘要提取', version: 'v1.0.1', node: 'Summarization', updatedAt: '2023-10-18', sourceMethod: 'IMPORT' },
+  { id: '1', name: '电商客服助手', version: 'v1.2.0', node: 'Intent-Analysis', updatedAt: '2023-10-24' },
+  { id: '2', name: '文案润色专家', version: 'v0.8.5', node: 'Style-Transfer', updatedAt: '2023-10-22' },
+  { id: '3', name: 'Python代码生成', version: 'v2.1.0', node: 'Code-Block', updatedAt: '2023-10-20' },
+  { id: '4', name: '通用摘要提取', version: 'v1.0.1', node: 'Summarization', updatedAt: '2023-10-18' },
 ];
 
 interface DebuggerConfig {
   id: string;
   name: string;
   model: GeminiModel;
+  createdAt: string;
 }
 
 const PromptDebugger: React.FC = () => {
@@ -58,7 +58,7 @@ const PromptDebugger: React.FC = () => {
 
   // New Configuration States
   const [debugMode, setDebugMode] = useState<'SINGLE' | 'CONTRAST'>('SINGLE');
-  const [addMethod, setAddMethod] = useState<'MANUAL' | 'IMPORT'>('MANUAL');
+  const [usageMode, setUsageMode] = useState<'EDIT' | 'DEBUG'>('DEBUG');
   const [inputParams, setInputParams] = useState<InputParam[]>([]);
   const [inputParamsRight, setInputParamsRight] = useState<InputParam[]>([]);
   const [kbName, setKbName] = useState('');
@@ -82,7 +82,6 @@ const PromptDebugger: React.FC = () => {
   const [taskName, setTaskName] = useState('');
   const [rounds, setRounds] = useState<number>(1);
   const [createModalVisible, setCreateModalVisible] = useState(false);
-  const [createSource, setCreateSource] = useState<'MANUAL' | 'IMPORT'>('MANUAL');
   const [createName, setCreateName] = useState('');
   const [createVersion, setCreateVersion] = useState('');
   const [createNode, setCreateNode] = useState('');
@@ -97,14 +96,18 @@ const PromptDebugger: React.FC = () => {
   const [contrastLatencyMs, setContrastLatencyMs] = useState<number | null>(null);
   const [contrastTokenUsage, setContrastTokenUsage] = useState<number | null>(null);
   
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importType, setImportType] = useState<'excel' | 'tuning'>('excel');
+  const [tuningImportStep, setTuningImportStep] = useState<'initial' | 'list'>('initial');
+  
   const isCancelledRef = useRef(false);
 
   // --- Actions ---
   const handleEnterDebuggerList = (item: DebuggerItem) => {
     setActiveItem(item);
     setDebuggers([
-      { id: 'd1', name: '默认调试器A', model: GeminiModel.FLASH },
-      { id: 'd2', name: '高阶调试器B', model: GeminiModel.PRO },
+      { id: 'd1', name: '上下文重写1', model: GeminiModel.FLASH, createdAt: '2025-11-28 10:21' },
+      { id: 'd2', name: '上下文重写2', model: GeminiModel.PRO, createdAt: '2025-11-28 10:22' },
     ]);
     setView('DEBUGGER_LIST');
   };
@@ -211,12 +214,12 @@ const PromptDebugger: React.FC = () => {
     return m;
   };
 
-  const enterEdit = (item: DebuggerItem, m?: GeminiModel, mode?: 'SINGLE' | 'CONTRAST') => {
+  const enterEdit = (item: DebuggerItem, m?: GeminiModel, mode?: 'SINGLE' | 'CONTRAST', usage: 'EDIT' | 'DEBUG' = 'DEBUG') => {
     setActiveItem(item);
     setSystemInstruction(`You are the ${item.name}.`);
     setSystemInstructionRight(`You are the ${item.name}.`);
     setDebugMode(mode ?? 'SINGLE');
-    setAddMethod('MANUAL');
+    setUsageMode(usage);
     setInputParams([{ id: Date.now().toString(), name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' }]);
     setInputParamsRight([{ id: Date.now().toString(), name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' }]);
     setKbName('');
@@ -245,7 +248,7 @@ const PromptDebugger: React.FC = () => {
   const editDebugger = (dbg: DebuggerConfig) => {
     if (!activeItem) return;
     setDebuggerConfigName(dbg.name);
-    enterEdit(activeItem, dbg.model, 'SINGLE');
+    enterEdit(activeItem, dbg.model, 'SINGLE', 'EDIT');
   };
 
   const startDebugger = (dbg: DebuggerConfig) => {
@@ -273,15 +276,20 @@ const PromptDebugger: React.FC = () => {
   };
 
   const compareDebuggers = () => {
-    if (selectedDebuggerIds.length < 2) return;
+    if (selectedDebuggerIds.length < 1) return;
     
     const first = debuggers.find(d => d.id === selectedDebuggerIds[0]) || null;
     const second = debuggers.find(d => d.id === selectedDebuggerIds[1]) || null;
     
-    if (activeItem) {
-      setContrastLeft(first);
-      setContrastRight(second);
-      enterEdit(activeItem, first ? first.model : undefined, 'CONTRAST');
+    if (activeItem && first) {
+      if (selectedDebuggerIds.length === 1) {
+        setDebuggerConfigName(first.name);
+        enterEdit(activeItem, first.model, 'SINGLE', 'DEBUG');
+      } else {
+        setContrastLeft(first);
+        setContrastRight(second);
+        enterEdit(activeItem, first.model, 'CONTRAST', 'DEBUG');
+      }
     }
   };
 
@@ -321,6 +329,7 @@ const PromptDebugger: React.FC = () => {
         id: `d${Date.now().toString()}`,
         name: `${dbg.name}-复制`,
         model: dbg.model,
+        createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
       };
       if (idx === -1) return [...prev, newItem];
       const next = [...prev];
@@ -334,7 +343,7 @@ const PromptDebugger: React.FC = () => {
   };
 
   // Helper for Input Params List
-  const renderParamBuilder = (params: InputParam[], setParams: React.Dispatch<React.SetStateAction<InputParam[]>>, label: string) => {
+  const renderParamBuilder = (params: InputParam[], setParams: React.Dispatch<React.SetStateAction<InputParam[]>>, label: string, readOnly: boolean = false) => {
     const addParam = () => {
       setParams(prev => [...prev, { id: Date.now().toString(), name: '', type: 'string', source: '引用', description: '' }]);
     };
@@ -357,14 +366,16 @@ const PromptDebugger: React.FC = () => {
                  value={param.name}
                  onChange={(e) => updateParam(param.id, 'name', e.target.value)}
                  placeholder="字段名"
-                 className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border"
+                 disabled={true}
+                 className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border bg-gray-100 text-gray-500 cursor-not-allowed"
                />
              </div>
              <div className="w-[100px]">
                <select
                  value={param.type}
                  onChange={(e) => updateParam(param.id, 'type', e.target.value)}
-                 className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border bg-white"
+                 disabled={true}
+                 className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border bg-gray-100 text-gray-500 cursor-not-allowed"
                >
                  <option value="string">string</option>
                  <option value="number">number</option>
@@ -373,43 +384,155 @@ const PromptDebugger: React.FC = () => {
                  <option value="array">array</option>
                </select>
              </div>
-             <div className="w-[100px]">
-               <select
-                 value={param.source}
-                 onChange={(e) => updateParam(param.id, 'source', e.target.value)}
-                 className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border bg-white"
-               >
-                 <option value="引用">引用</option>
-                 <option value="手动">手动</option>
-               </select>
-             </div>
              <div className="flex-1">
                 <input 
                  type="text" 
                  value={param.description}
                  onChange={(e) => updateParam(param.id, 'description', e.target.value)}
                  placeholder="描述"
-                 className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border"
+                 disabled={readOnly}
+                 className={`w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border ${
+                   readOnly ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''
+                 }`}
                />
              </div>
-             <button 
-                onClick={() => removeParam(param.id)}
-                className="text-gray-400 hover:text-red-500 p-1.5 rounded transition-colors opacity-0 group-hover:opacity-100"
-             >
-               <X size={16} />
-             </button>
+             {!readOnly && (
+               <button 
+                  onClick={() => removeParam(param.id)}
+                  className="text-gray-400 hover:text-red-500 p-1.5 rounded transition-colors opacity-0 group-hover:opacity-100"
+               >
+                 <X size={16} />
+               </button>
+             )}
           </div>
         ))}
-        <button 
+        {/* <button 
           onClick={addParam}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-sm font-medium rounded-md hover:bg-blue-100 transition-colors"
         >
           <Plus size={14} />
           {label}
-        </button>
+        </button> */}
       </div>
     );
   };
+
+  const importConfigModal = importModalVisible && (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-lg w-[600px] p-6">
+        <div className="flex justify-between items-center mb-4">
+          <div className="text-base font-bold text-gray-900">导入调试用例</div>
+          <button onClick={() => setImportModalVisible(false)} className="text-gray-400 hover:text-gray-600">
+            <X size={20} />
+          </button>
+        </div>
+        
+        <div className="flex border-b border-gray-200 mb-4">
+          <button
+            onClick={() => setImportType('excel')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              importType === 'excel' 
+                ? 'border-blue-600 text-blue-600' 
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Excel导入
+          </button>
+          <button
+            onClick={() => {
+                setImportType('tuning');
+                setTuningImportStep('initial');
+            }}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              importType === 'tuning' 
+                ? 'border-blue-600 text-blue-600' 
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            从调优中心导入
+          </button>
+        </div>
+
+        <div className="min-h-[200px]">
+          {importType === 'excel' ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col items-center justify-center h-[200px] border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
+                <div className="text-gray-400 mb-2">
+                  <Plus size={32} />
+                </div>
+                <div className="text-sm text-gray-600 font-medium">点击上传Excel文件</div>
+                <div className="text-xs text-gray-400 mt-1">支持 .xlsx, .xls 格式</div>
+                <input type="file" className="hidden" accept=".xlsx,.xls" />
+              </div>
+              <div className="text-center">
+                <span className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer">点击下载调试用例导入模版</span>
+              </div>
+            </div>
+          ) : (
+            tuningImportStep === 'initial' ? (
+                 <div 
+                    onClick={() => setTuningImportStep('list')}
+                    className="flex items-center justify-center h-[200px] border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                 >
+                    <div className="flex items-center gap-2 text-blue-600 font-medium bg-blue-50 px-4 py-2 rounded-md">
+                        <Plus size={18} />
+                        从调优中心导入
+                    </div>
+                 </div>
+            ) : (
+                <div className="space-y-2">
+                <div className="relative">
+                    <input 
+                    type="text" 
+                    placeholder="搜索调优任务..." 
+                    className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <div className="absolute left-3 top-2.5 text-gray-400">
+                    <Search size={16} /> 
+                    </div>
+                </div>
+                <div className="border border-gray-200 rounded-md max-h-[240px] overflow-y-auto">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="flex items-center p-3 hover:bg-gray-50 border-b last:border-0 cursor-pointer">
+                        <input type="radio" name="tuning-task" className="mr-3 text-blue-600 focus:ring-blue-500" />
+                        <div>
+                        <div className="text-sm font-medium text-gray-900">电商客服意图识别优化_v{i}.0</div>
+                        <div className="text-xs text-gray-500 mt-0.5">更新时间: 2023-11-0{i} 14:30</div>
+                        </div>
+                        <div className="ml-auto">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            已完成
+                            </span>
+                        </div>
+                    </div>
+                    ))}
+                </div>
+                </div>
+            )
+          )}
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            onClick={() => setImportModalVisible(false)}
+            className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={() => {
+              // Mock import action
+              alert('导入成功');
+              setImportModalVisible(false);
+            }}
+            className="px-4 py-2 text-sm rounded-md text-white bg-blue-600 hover:bg-blue-700"
+          >
+            开始导入
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   const taskConfigModal = pendingAction && (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
@@ -463,9 +586,9 @@ const PromptDebugger: React.FC = () => {
       <div className="flex flex-col h-full bg-white p-6 overflow-y-auto">
         <div className="w-full">
             <div className="flex justify-between items-center mb-6 px-2">
-                <h2 className="text-2xl font-bold text-gray-800">调试用例列表</h2>
+                <h2 className="text-2xl font-bold text-gray-800">调试集列表</h2>
                 <button onClick={() => setCreateModalVisible(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm">
-                    新建调试用例
+                    新建调试集
                 </button>
             </div>
             
@@ -473,17 +596,16 @@ const PromptDebugger: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                         <tr>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[25%]">调试器名称</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[25%]">调试集名称</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[15%]">版本号</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[20%]">节点</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[15%]">数据来源方式</th>
                             <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-[25%]">操作</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {items.length === 0 ? (
                             <tr>
-                                <td colSpan={5} className="px-6 py-12 text-center text-gray-500 text-sm">
+                                <td colSpan={4} className="px-6 py-12 text-center text-gray-500 text-sm">
                                     暂无数据
                                 </td>
                             </tr>
@@ -511,11 +633,14 @@ const PromptDebugger: React.FC = () => {
                                         {item.node}
                                     </div>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                    {item.sourceMethod === 'MANUAL' ? '手动输入' : '从调优中心导入'}
-                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                     <div className="flex justify-end items-center gap-2">
+                                        <button 
+                                            onClick={() => alert('应用成功！')}
+                                            className="text-gray-700 hover:text-blue-600 bg-white hover:bg-blue-50 px-3 py-1.5 rounded transition-colors text-xs font-medium border border-gray-300 hover:border-blue-300"
+                                        >
+                                            一键应用
+                                        </button>
                                         <button 
                                             onClick={() => handleEnterDebuggerList(item)}
                                             className="text-gray-700 hover:text-blue-600 bg-white hover:bg-blue-50 px-3 py-1.5 rounded transition-colors text-xs font-medium border border-gray-300 hover:border-blue-300"
@@ -539,41 +664,15 @@ const PromptDebugger: React.FC = () => {
             {createModalVisible && (
               <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
                 <div className="bg-white rounded-lg shadow-lg w-[520px] p-6">
-                  <div className="text-base font-bold text-gray-900 mb-4">新建调试用例</div>
+                  <div className="text-base font-bold text-gray-900 mb-4">新增调试集</div>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">数据来源方式</label>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setCreateSource('MANUAL')}
-                          className={`px-3 py-1.5 rounded-md text-sm font-medium border ${createSource === 'MANUAL' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
-                        >
-                          手动输入
-                        </button>
-                        <button
-                          onClick={() => setCreateSource('IMPORT')}
-                          className={`px-3 py-1.5 rounded-md text-sm font-medium border ${createSource === 'IMPORT' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
-                        >
-                          从调优中心导入
-                        </button>
-                      </div>
-                      {createSource === 'IMPORT' && (
-                        <div className="mt-3 border border-gray-200 rounded-md p-8 bg-gray-50">
-                          <div className="w-full flex items-center justify-center">
-                            <button className="px-4 py-2 rounded-md border border-blue-300 text-blue-600 bg-white hover:bg-blue-50 text-sm font-medium">
-                              从调优中心导入
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">用例名称</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">调试集名称</label>
                       <input
                         type="text"
                         value={createName}
                         onChange={e => setCreateName(e.target.value)}
-                        placeholder="请输入用例名称"
+                        placeholder="请输入调试集名称"
                         className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
                       />
                     </div>
@@ -611,7 +710,6 @@ const PromptDebugger: React.FC = () => {
                         setCreateName('');
                         setCreateVersion('');
                         setCreateNode('');
-                        setCreateSource('MANUAL');
                       }}
                       className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                     >
@@ -626,14 +724,12 @@ const PromptDebugger: React.FC = () => {
                           version: createVersion,
                           node: createNode,
                           updatedAt: new Date().toISOString().slice(0, 10),
-                          sourceMethod: createSource,
                         } as DebuggerItem;
                         setItems(prev => [newItem, ...prev]);
                         setCreateModalVisible(false);
                         setCreateName('');
                         setCreateVersion('');
                         setCreateNode('');
-                        setCreateSource('MANUAL');
                       }}
                       disabled={!createName.trim() || !createVersion || !createNode}
                       className={`px-4 py-2 text-sm rounded-md text-white ${!createName.trim() || !createVersion || !createNode ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
@@ -663,26 +759,32 @@ const PromptDebugger: React.FC = () => {
           <span className="text-xs text-gray-400">• {activeItem?.node}</span>
           <div className="ml-auto flex items-center gap-4">
             <button
+              onClick={() => setImportModalVisible(true)}
+              className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors"
+            >
+              导入调试用例
+            </button>
+            <button
               onClick={() => {
                 if (activeItem) {
                     setDebuggerConfigName('');
-                    enterEdit(activeItem, GeminiModel.FLASH, 'SINGLE');
+                    enterEdit(activeItem, GeminiModel.FLASH, 'SINGLE', 'EDIT');
                 }
               }}
               className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors"
             >
-              新建调试器
+              新建调试用例
             </button>
             <button
               onClick={compareDebuggers}
-              disabled={selectedDebuggerIds.length < 2}
+              disabled={selectedDebuggerIds.length < 1}
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors border ${
-                selectedDebuggerIds.length >= 2
+                selectedDebuggerIds.length >= 1
                   ? 'border-purple-600 text-purple-600 hover:bg-purple-50 bg-white'
                   : 'border-gray-200 text-gray-300 cursor-not-allowed bg-gray-50'
               }`}
             >
-              对比调试
+              调试台
             </button>
             <button
               onClick={batchDelete}
@@ -709,15 +811,16 @@ const PromptDebugger: React.FC = () => {
                     onChange={toggleSelectAll}
                   />
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">调试器名称</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">调试用例名称</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">模型</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">创建时间</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">操作</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
               {debuggers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">暂无调试器</td>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">暂无调试器</td>
                 </tr>
               ) : (
                 debuggers.map(dbg => (
@@ -731,6 +834,7 @@ const PromptDebugger: React.FC = () => {
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-900">{dbg.name}</td>
                     <td className="px-4 py-2 text-sm text-gray-700">{modelLabel(dbg.model)}</td>
+                    <td className="px-4 py-2 text-sm text-gray-700">{dbg.createdAt}</td>
                     <td className="px-4 py-2 text-sm">
                       <div className="flex items-center justify-end gap-2">
                         <button
@@ -766,6 +870,7 @@ const PromptDebugger: React.FC = () => {
           </table>
         </div>
         {taskConfigModal}
+        {importConfigModal}
       </div>
     );
   }
@@ -789,7 +894,8 @@ const PromptDebugger: React.FC = () => {
                  {renderParamBuilder(
                    isPrimary ? inputParams : inputParamsRight,
                    isPrimary ? setInputParams : setInputParamsRight,
-                   '添加输入'
+                   '添加输入',
+                   true
                  )}
              </div>
           </div>
@@ -892,7 +998,8 @@ const PromptDebugger: React.FC = () => {
                 {renderParamBuilder(
                     isPrimary ? jsonParams : jsonParamsRight,
                     isPrimary ? setJsonParams : setJsonParamsRight,
-                    '添加Schema字段'
+                    '添加Schema字段',
+                    true
                 )}
             </div>
           )}
@@ -972,7 +1079,9 @@ const PromptDebugger: React.FC = () => {
                     <ArrowLeft size={20} />
                 </button>
 
-                <h2 className="text-lg font-bold text-gray-900">{activeItem?.name}</h2>
+                <h2 className="text-lg font-bold text-gray-900">
+                    {usageMode === 'DEBUG' ? '调试台' : activeItem?.name}
+                </h2>
 
                 <div className="h-4 w-px bg-gray-300 mx-1"></div>
 
@@ -999,21 +1108,27 @@ const PromptDebugger: React.FC = () => {
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 pb-24">
 
             {/* Debugger Name - Only show in SINGLE mode */}
-            {debugMode === 'SINGLE' && (
+            {debugMode === 'SINGLE' && (usageMode === 'EDIT' || usageMode === 'DEBUG') && (
                 <div className="mb-8 space-y-3">
-                    <label className="block text-sm font-bold text-gray-900">调试器名称</label>
-                    <input
-                        type="text"
-                        value={debuggerConfigName}
-                        onChange={(e) => setDebuggerConfigName(e.target.value)}
-                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
-                        placeholder="请输入调试器名称"
-                    />
+                    <label className="block text-sm font-bold text-gray-900">调试用例名称</label>
+                    {usageMode === 'EDIT' ? (
+                        <input
+                            type="text"
+                            value={debuggerConfigName}
+                            onChange={(e) => setDebuggerConfigName(e.target.value)}
+                            className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
+                            placeholder="请输入调试用例名称"
+                        />
+                    ) : (
+                        <div className="text-sm text-gray-900 py-2">
+                            {debuggerConfigName}
+                        </div>
+                    )}
                 </div>
             )}
 
-            {/* 1. Input Parameters */}
-            {debugMode === 'SINGLE' && (
+            {/* 1. Input Parameters - Show in EDIT mode */}
+            {debugMode === 'SINGLE' && usageMode === 'EDIT' && (
               <div className="mb-8">
                   <div className="flex items-center gap-2 mb-3">
                       <label className="text-sm font-bold text-gray-900">输入参数</label>
@@ -1025,106 +1140,120 @@ const PromptDebugger: React.FC = () => {
               </div>
             )}
 
-            {/* 2. Configuration Grid */}
-            {debugMode === 'SINGLE' && (
+            {/* 2. Configuration Grid - Show in DEBUG mode (previously hidden in SINGLE) */}
+            {/* Re-enabled for usageMode === 'DEBUG' */}
+            {debugMode === 'SINGLE' && usageMode === 'DEBUG' && (
               <div className="grid grid-cols-2 gap-x-12 gap-y-8 mb-8">
-                  {/* Model Selection - Only for SINGLE mode */}
-                  <div className="space-y-3">
-                      <label className="block text-sm font-bold text-gray-900">模型选择</label>
-                      <select
-                          value={model}
-                          onChange={(e) => setModel(e.target.value as GeminiModel)}
-                          className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white"
-                      >
-                          <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
-                          <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
-                      </select>
-                  </div>
-                  {/* Tools Settings */}
-                  <div className="space-y-3">
-                      <label className="block text-sm font-bold text-gray-900">工具设置</label>
+                  {/* Left Column */}
+                  <div className="space-y-8">
+                      {/* Tools */}
                       <div className="space-y-3">
-                        <input
-                          type="text"
-                          value={kbName}
-                          onChange={(e) => setKbName(e.target.value)}
-                          placeholder="知识库名称"
-                          className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border"
-                        />
-                        <div className="flex items-center gap-3">
-                            <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
-                            <input
-                              type="number"
-                              value={toolCallCount}
-                              onChange={(e) => setToolCallCount(parseInt(e.target.value) || 0)}
-                              className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border"
-                            />
-                        </div>
+                          <label className="block text-sm font-bold text-gray-900">工具设置</label>
+                          <div className="space-y-3">
+                              <input 
+                                type="text" 
+                                value={kbName} 
+                                onChange={(e) => setKbName(e.target.value)} 
+                                placeholder="知识库名称" 
+                                className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border" 
+                              />
+                              <div className="flex items-center gap-3">
+                                  <span className="text-sm text-gray-500 whitespace-nowrap min-w-[60px]">调用次数:</span>
+                                  <input 
+                                    type="number" 
+                                    value={toolCallCount} 
+                                    onChange={(e) => setToolCallCount(parseInt(e.target.value) || 0)} 
+                                    className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-2 border" 
+                                  />
+                              </div>
+                          </div>
                       </div>
-                  </div>
 
-                  {/* Temperature */}
-                  <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                          <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
-                          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperature}</span>
-                      </div>
-                      <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.1"
-                          value={temperature}
-                          onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                          className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                  </div>
-
-                  {/* Top P */}
-                  <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                          <label className="block text-sm font-bold text-gray-900">Top P</label>
-                          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topP}</span>
-                      </div>
-                      <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          value={topP}
-                          onChange={(e) => setTopP(parseFloat(e.target.value))}
-                          className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                  </div>
-
-                  {/* Reference History Switch */}
-                  <div className="space-y-3">
-                      <div className="flex justify-between items-center h-full">
-                          <label className="block text-sm font-bold text-gray-900">引用历史</label>
-                          <div
-                              onClick={() => setReferenceHistoryEnabled(!referenceHistoryEnabled)}
-                              className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
-                          >
-                              <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                      {/* Params */}
+                      <div className="space-y-6">
+                          <div className="space-y-3">
+                              <div className="flex justify-between items-center">
+                                  <label className="block text-sm font-bold text-gray-900">生成温度 (Temperature)</label>
+                                  <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{temperature}</span>
+                              </div>
+                              <input 
+                                type="range" 
+                                min="0" max="1" step="0.1" 
+                                value={temperature} 
+                                onChange={(e) => setTemperature(parseFloat(e.target.value))} 
+                                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" 
+                              />
+                          </div>
+                          <div className="space-y-3">
+                              <div className="flex justify-between items-center">
+                                  <label className="block text-sm font-bold text-gray-900">Top P</label>
+                                  <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">{topP}</span>
+                              </div>
+                              <input 
+                                type="range" 
+                                min="0" max="1" step="0.05" 
+                                value={topP} 
+                                onChange={(e) => setTopP(parseFloat(e.target.value))} 
+                                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" 
+                              />
                           </div>
                       </div>
                   </div>
-              </div>
-            )}
 
-            {/* 3. JSON Output Switch */}
-            {debugMode === 'SINGLE' && (
-              <div className="mb-8 flex items-center justify-between py-2">
-                  <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
-                  <div
-                      onClick={() => setJsonFormatEnabled(!jsonFormatEnabled)}
-                      className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
-                  >
-                      <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                  {/* Right Column */}
+                  <div className="space-y-8">
+                      {/* Model Selection */}
+                      <div className="space-y-3">
+                          <label className="block text-sm font-bold text-gray-900">模型选择</label>
+                          <select 
+                            value={model} 
+                            onChange={(e) => setModel(e.target.value as GeminiModel)} 
+                            className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 px-3 border bg-white"
+                          >
+                              <option value={GeminiModel.FLASH}>Gemini 2.5 Flash</option>
+                              <option value={GeminiModel.PRO}>Gemini 3 Pro (Preview)</option>
+                          </select>
+                      </div>
+
+                      {/* System Instruction */}
+                      <div className="space-y-3">
+                          <label className="text-sm font-bold text-gray-900">系统提示词</label>
+                          <textarea 
+                            className="w-full h-32 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm" 
+                            placeholder="You are a helpful assistant..." 
+                            value={systemInstruction} 
+                            onChange={(e) => setSystemInstruction(e.target.value)} 
+                          />
+                      </div>
                   </div>
               </div>
             )}
-            {debugMode === 'SINGLE' && jsonFormatEnabled && (
+
+            {/* 3. JSON Output Switch - Show in DEBUG mode */}
+            {debugMode === 'SINGLE' && usageMode === 'DEBUG' && (
+              <div className="mb-8 grid grid-cols-2 gap-6">
+                  <div className="flex items-center justify-between py-2">
+                      <label className="block text-sm font-bold text-gray-900">JSON 格式输出</label>
+                      <div 
+                        onClick={() => setJsonFormatEnabled(!jsonFormatEnabled)} 
+                        className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${jsonFormatEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
+                      >
+                          <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${jsonFormatEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                      </div>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                      <label className="block text-sm font-bold text-gray-900">引用历史</label>
+                      <div 
+                        onClick={() => setReferenceHistoryEnabled(!referenceHistoryEnabled)} 
+                        className={`relative w-11 h-6 transition-colors rounded-full cursor-pointer ${referenceHistoryEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
+                      >
+                          <span className={`absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 transform ${referenceHistoryEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                      </div>
+                  </div>
+              </div>
+            )}
+            
+            {debugMode === 'SINGLE' && usageMode === 'DEBUG' && jsonFormatEnabled && (
                 <div className="mb-8 bg-blue-50/50 p-4 rounded-lg border border-blue-100">
                     <h4 className="text-xs font-semibold text-blue-800 mb-2 uppercase tracking-wide">Schema Definition</h4>
                     {renderParamBuilder(jsonParams, setJsonParams, '添加Schema字段')}
@@ -1133,6 +1262,51 @@ const PromptDebugger: React.FC = () => {
 
             {/* 4. Unified Debug Block */}
             <div className="space-y-4">
+                {debugMode === 'SINGLE' && usageMode === 'DEBUG' && (
+                    /* User Prompt & Output for Single Debug Mode */
+                    <div className="space-y-6">
+                         {/* Input Parameters (Values) - If any */}
+                         {inputParams.length > 0 && (
+                             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                                 <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">输入变量</h4>
+                                 <div className="space-y-3">
+                                     {inputParams.map(param => (
+                                         <div key={param.id} className="flex flex-col gap-1">
+                                             <label className="text-xs font-medium text-gray-700">{param.name} ({param.type})</label>
+                                             <input type="text" placeholder={`Enter value for ${param.name}`} className="w-full text-sm border-gray-300 rounded-md py-1.5 px-3 border focus:ring-blue-500 focus:border-blue-500" />
+                                         </div>
+                                     ))}
+                                 </div>
+                             </div>
+                         )}
+
+                         <div className="space-y-2">
+                            <label className="text-sm font-bold text-gray-900">用户提示词</label>
+                            <textarea 
+                                className="w-full h-32 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm"
+                                placeholder="Enter your prompt here..."
+                                value={userPrompt}
+                                onChange={(e) => setUserPrompt(e.target.value)}
+                            />
+                         </div>
+
+                         {response && (
+                             <div className="space-y-2">
+                                 <div className="flex justify-between items-center">
+                                     <label className="text-sm font-bold text-gray-900">输出结果</label>
+                                     <div className="flex gap-2">
+                                         <button onClick={handleCopy} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                                             {copied ? 'Copied!' : 'Copy'}
+                                         </button>
+                                     </div>
+                                 </div>
+                                 <div className="w-full min-h-[100px] p-4 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm whitespace-pre-wrap">
+                                     {response}
+                                 </div>
+                             </div>
+                         )}
+                    </div>
+                )}
                 {debugMode === 'CONTRAST' && (
                   <div className="grid grid-cols-2 gap-6 mb-2">
                     <div className="flex items-baseline justify-between gap-2">
@@ -1157,25 +1331,33 @@ const PromptDebugger: React.FC = () => {
                     </div>
                   </div>
                 )}
-                <div className={`grid ${debugMode === 'CONTRAST' ? 'grid-cols-2' : 'grid-cols-1'} gap-6`}>
-                  {renderDebugPanel('PRIMARY')}
-                  {debugMode === 'CONTRAST' && renderDebugPanel('CONTRAST')}
-                </div>
+                {debugMode === 'CONTRAST' && (
+                  <div className="grid grid-cols-2 gap-6">
+                    {renderDebugPanel('PRIMARY')}
+                    {renderDebugPanel('CONTRAST')}
+                  </div>
+                )}
             </div>
         </div>
 
         {/* Fixed Footer */}
         <div className="absolute bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-200 p-4 flex justify-between items-center z-10">
+            {usageMode === 'DEBUG' ? (
             <button
                 onClick={() => {
                 setUserPrompt('');
                 setResponse('');
+                if (debugMode === 'CONTRAST') {
+                    setUserPromptRight('');
+                    setResponseRight('');
+                }
                 }}
                 className="text-gray-500 hover:text-red-500 transition-colors flex items-center gap-1.5 text-sm px-3 py-2 rounded-md hover:bg-gray-200 font-medium"
             >
                 <Trash2 size={16} />
                 Clear Input
             </button>
+            ) : <div />}
 
             <div className="flex items-center gap-3">
                 <button
@@ -1184,19 +1366,7 @@ const PromptDebugger: React.FC = () => {
                 >
                     取消
                 </button>
-                {debugMode === 'CONTRAST' ? (
-                    <button
-                        onClick={() => {
-                            setPendingAction({ type: 'execution_config' });
-                            setTaskName('');
-                            setRounds(1);
-                        }}
-                        className="text-blue-600 bg-white hover:bg-blue-50 border border-blue-600 px-4 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-sm"
-                    >
-                        <Play size={16} />
-                        创建任务
-                    </button>
-                ) : (
+                {(usageMode === 'EDIT' || (usageMode === 'DEBUG' && debugMode === 'SINGLE')) && (
                     <button
                         onClick={() => alert('保存成功！')}
                         className="text-blue-600 bg-white hover:bg-blue-50 border border-blue-600 px-4 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-sm"
@@ -1205,7 +1375,7 @@ const PromptDebugger: React.FC = () => {
                         保存
                     </button>
                 )}
-                {isGenerating ? (
+                {usageMode === 'DEBUG' && (isGenerating ? (
                     <button
                     onClick={handleStop}
                     className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all text-sm"
@@ -1216,9 +1386,9 @@ const PromptDebugger: React.FC = () => {
                 ) : (
                     <button
                     onClick={handleRun}
-                    disabled={!userPrompt.trim()}
+                    disabled={!userPrompt.trim() && (debugMode === 'SINGLE' || !userPromptRight.trim())}
                     className={`px-6 py-2 rounded-md font-medium flex items-center gap-2 shadow-sm transition-all transform active:scale-95 text-sm ${
-                        !userPrompt.trim()
+                        (!userPrompt.trim() && (debugMode === 'SINGLE' || !userPromptRight.trim()))
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
                         : 'bg-blue-600 hover:bg-blue-700 text-white hover:shadow-blue-200'
                     }`}
@@ -1226,7 +1396,7 @@ const PromptDebugger: React.FC = () => {
                     <Play size={16} fill="currentColor" />
                     调试
                     </button>
-                )}
+                ))}
             </div>
         </div>
         {taskConfigModal}
