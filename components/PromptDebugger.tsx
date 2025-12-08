@@ -1093,6 +1093,16 @@ const PromptDebugger: React.FC = () => {
                                 className="flex-1 text-sm border-gray-300 rounded-md shadow-sm py-1.5 px-2 border"
                               />
                             )}
+                            <button
+                              onClick={() => {
+                                if (confirm('确定要删除这条数据吗？')) {
+                                  setLlmRows(prev => prev.filter((_, idx) => idx !== i));
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-800 text-xs px-3 py-1.5 border border-red-200 rounded bg-red-50 hover:bg-red-100 whitespace-nowrap h-fit"
+                            >
+                              删除
+                            </button>
                           </div>
                         </td>
                       </tr>
