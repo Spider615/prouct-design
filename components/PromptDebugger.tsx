@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Play, Trash2, StopCircle, 
   ArrowLeft, TerminalSquare, Activity, Plus, X, Save, Search
@@ -40,7 +40,7 @@ interface DebuggerConfig {
 
 const PromptDebugger: React.FC = () => {
   // Navigation State
-  const [view, setView] = useState<'LIST' | 'DEBUGGER_LIST' | 'DEBUG'>('LIST');
+  const [view, setView] = useState<'LIST' | 'DEBUGGER_LIST' | 'DEBUG' | 'LLM_RESULTS'>('LIST');
   const [items, setItems] = useState<DebuggerItem[]>(INITIAL_DATA);
   const [activeItem, setActiveItem] = useState<DebuggerItem | null>(null);
 
@@ -97,8 +97,73 @@ const PromptDebugger: React.FC = () => {
   const [contrastTokenUsage, setContrastTokenUsage] = useState<number | null>(null);
   
   const [importModalVisible, setImportModalVisible] = useState(false);
-  const [importType, setImportType] = useState<'excel' | 'tuning'>('excel');
+  const [importType, setImportType] = useState<'llm' | 'tuning'>('llm');
   const [tuningImportStep, setTuningImportStep] = useState<'initial' | 'list'>('initial');
+  const [llmPrompt, setLlmPrompt] = useState('请生成5条测试数据，每条数据包含多个参数（如 name, age, city 等）。请返回 JSON 数组，每个元素是一个对象，例如 {"name": "Alice", "age": 25, "city": "New York"}。仅返回JSON。');
+  const [llmGenerating, setLlmGenerating] = useState(false);
+  type LlmRow = { name: string; type: string; description: string };
+  const [llmRows, setLlmRows] = useState<LlmRow[]>([
+    { name: 'user_info', type: 'json', description: '{"name": "张三", "age": 28, "role": "admin"}' },
+    { name: 'order_data', type: 'json', description: '{"order_id": "ORD-2023001", "amount": 99.9, "status": "paid"}' }
+  ]);
+  const [llmCount, setLlmCount] = useState<number>(5);
+  const updateLlmRow = (index: number, field: keyof LlmRow, value: string) => {
+    setLlmRows(prev => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  };
+
+  const runLlmGeneration = async () => {
+    setLlmGenerating(true);
+    try {
+      const config = { responseMimeType: 'application/json' } as any;
+      const promptText = `${llmPrompt.trim()}\n生成数量: ${llmCount}`;
+      const stream = await generateContentStream(GeminiModel.FLASH, promptText, undefined, config);
+      let text = '';
+      for await (const chunk of stream as any) {
+        const c: any = chunk;
+        if (c.text) text += c.text;
+      }
+      let arr: any = [];
+      try { arr = JSON.parse(text); } catch { arr = text.split(/\n+/).map((s: string) => s.trim()).filter(Boolean); }
+      const normalize = (input: any): LlmRow[] => {
+        const rows: LlmRow[] = [];
+        const pushDesc = (desc: any, name: string = 'text', type: string = 'string') => {
+          const d = typeof desc === 'string' ? desc : JSON.stringify(desc);
+          rows.push({ name, type, description: d });
+        };
+        if (Array.isArray(input)) {
+          for (const item of input) {
+            if (typeof item === 'string') {
+              pushDesc(item);
+            } else if (Array.isArray(item)) {
+              for (const sub of item) pushDesc(sub);
+            } else if (typeof item === 'object' && item) {
+              const name = item.name ?? 'text';
+              const type = item.type ?? 'string';
+              if (Array.isArray(item.values)) {
+                for (const v of item.values) pushDesc(v, name, type);
+              } else if (item.description) {
+                pushDesc(item.description, name, type);
+              } else if (item.value) {
+                pushDesc(item.value, name, type);
+              } else {
+                pushDesc(item, name, type);
+              }
+            } else {
+              pushDesc(item);
+            }
+          }
+        } else if (typeof input === 'string') {
+          for (const line of input.split(/\n+/)) if (line.trim()) pushDesc(line.trim());
+        }
+        return rows;
+      };
+      let rows = normalize(arr);
+      if (rows.length > llmCount) rows = rows.slice(0, llmCount);
+      setLlmRows(rows);
+    } finally {
+      setLlmGenerating(false);
+    }
+  };
   
   const isCancelledRef = useRef(false);
 
@@ -220,8 +285,16 @@ const PromptDebugger: React.FC = () => {
     setSystemInstructionRight(`You are the ${item.name}.`);
     setDebugMode(mode ?? 'SINGLE');
     setUsageMode(usage);
-    setInputParams([{ id: Date.now().toString(), name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' }]);
-    setInputParamsRight([{ id: Date.now().toString(), name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' }]);
+    setInputParams([
+      { id: Date.now().toString(), name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' },
+      { id: Date.now().toString() + '1', name: 'name', type: 'string', source: '引用', description: '小明' },
+      { id: Date.now().toString() + '2', name: 'age', type: 'number', source: '引用', description: '12' }
+    ]);
+    setInputParamsRight([
+      { id: Date.now().toString(), name: 'text', type: 'string', source: '引用', description: '接收文本消息/text' },
+      { id: Date.now().toString() + '1', name: 'name', type: 'string', source: '引用', description: '小明' },
+      { id: Date.now().toString() + '2', name: 'age', type: 'number', source: '引用', description: '12' }
+    ]);
     setKbName('');
     setKbNameRight('');
     setToolCallCount(0);
@@ -429,14 +502,14 @@ const PromptDebugger: React.FC = () => {
         
         <div className="flex border-b border-gray-200 mb-4">
           <button
-            onClick={() => setImportType('excel')}
+            onClick={() => setImportType('llm')}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              importType === 'excel' 
+              importType === 'llm' 
                 ? 'border-blue-600 text-blue-600' 
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            Excel导入
+            大模型生成
           </button>
           <button
             onClick={() => {
@@ -454,18 +527,25 @@ const PromptDebugger: React.FC = () => {
         </div>
 
         <div className="min-h-[200px]">
-          {importType === 'excel' ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col items-center justify-center h-[200px] border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
-                <div className="text-gray-400 mb-2">
-                  <Plus size={32} />
-                </div>
-                <div className="text-sm text-gray-600 font-medium">点击上传Excel文件</div>
-                <div className="text-xs text-gray-400 mt-1">支持 .xlsx, .xls 格式</div>
-                <input type="file" className="hidden" accept=".xlsx,.xls" />
+          {importType === 'llm' ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-bold text-gray-900">生成指令</label>
+                <textarea
+                  value={llmPrompt}
+                  onChange={(e) => setLlmPrompt(e.target.value)}
+                  className="w-full h-24 p-3 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y font-mono bg-white shadow-sm"
+                />
               </div>
-              <div className="text-center">
-                <span className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer">点击下载调试用例导入模版</span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-700">生成数量</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={llmCount}
+                  onChange={(e) => setLlmCount(parseInt(e.target.value) || 1)}
+                  className="w-24 text-sm border-gray-300 rounded-md shadow-sm py-1.5 px-2 border"
+                />
               </div>
             </div>
           ) : (
@@ -520,14 +600,19 @@ const PromptDebugger: React.FC = () => {
             取消
           </button>
           <button
-            onClick={() => {
-              // Mock import action
-              alert('导入成功');
-              setImportModalVisible(false);
+            onClick={async () => {
+              if (importType === 'llm') {
+                setImportModalVisible(false);
+                setView('LLM_RESULTS');
+                await runLlmGeneration();
+              } else {
+                alert('导入成功');
+                setImportModalVisible(false);
+              }
             }}
             className="px-4 py-2 text-sm rounded-md text-white bg-blue-600 hover:bg-blue-700"
           >
-            开始导入
+            {importType === 'llm' ? '开始生成' : '开始导入'}
           </button>
         </div>
       </div>
@@ -871,6 +956,153 @@ const PromptDebugger: React.FC = () => {
         </div>
         {taskConfigModal}
         {importConfigModal}
+      </div>
+    );
+  }
+
+  if (view === 'LLM_RESULTS') {
+    return (
+      <div className="flex flex-col h-full bg-white p-6 overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-gray-900">生成结果</h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={runLlmGeneration}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium ${llmGenerating ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+            >
+              刷新
+            </button>
+            <button
+              onClick={() => {
+                const params = llmRows.map((r, i) => ({
+                  id: `llm-${Date.now()}-${i}`,
+                  name: r.name || 'text',
+                  type: r.type || 'string',
+                  source: '手动',
+                  description: r.description || ''
+                }));
+                setInputParams(params);
+                alert('导入成功！');
+              }}
+              className="px-3 py-1.5 rounded-md text-sm font-medium bg-white border border-blue-600 text-blue-600 hover:bg-blue-50"
+            >
+              导入用例
+            </button>
+            <button
+              onClick={() => {
+                const ok = confirm('生成过程中取消后数据不会保存，请确认是否取消');
+                if (ok) {
+                  setView('DEBUGGER_LIST');
+                }
+              }}
+              className="px-3 py-1.5 rounded-md text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">输入参数</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {llmRows.length === 0 ? (
+                <tr>
+                  <td className="px-6 py-8 text-center text-sm text-gray-500">暂无数据</td>
+                </tr>
+              ) : (
+                (() => {
+                  const allKeys = new Set<string>();
+                  const keyTypes = new Map<string, string>();
+                  
+                  llmRows.forEach(r => {
+                    try {
+                      const p = JSON.parse(r.description);
+                      if (p && typeof p === 'object' && !Array.isArray(p)) {
+                        Object.keys(p).forEach(k => {
+                          allKeys.add(k);
+                          if (!keyTypes.has(k) && p[k] !== undefined && p[k] !== null) {
+                             let t: string = typeof p[k];
+                             if (Array.isArray(p[k])) t = 'array';
+                             keyTypes.set(k, t);
+                          }
+                        });
+                      }
+                    } catch {}
+                  });
+                  const unifiedKeys = Array.from(allKeys);
+                  const hasStructuredData = unifiedKeys.length > 0;
+
+                  return llmRows.map((row, i) => {
+                    let parsed: any = {};
+                    try {
+                      parsed = JSON.parse(row.description);
+                    } catch {}
+                    
+                    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                       parsed = {}; 
+                    }
+
+                    return (
+                      <tr key={i}>
+                        <td className="px-6 py-3 text-sm text-gray-900">
+                          <div className="flex items-start gap-2">
+                            <span className="w-7 text-xs text-gray-500 text-center mt-2">{i + 1}</span>
+                            {hasStructuredData ? (
+                              <div className="flex-1 border border-gray-200 rounded-md p-2 bg-gray-50 space-y-2">
+                                {unifiedKeys.map((key) => {
+                                  const type = keyTypes.get(key) || 'string';
+                                  return (
+                                    <div key={key} className="flex items-center gap-2">
+                                      <div className="w-24 text-right text-xs text-gray-500 truncate" title={key}>{key}</div>
+                                      <div className="w-[100px]">
+                                        <select
+                                          value={type}
+                                          disabled={true}
+                                          className="w-full text-sm border-gray-300 rounded-md shadow-sm py-1 px-2 border bg-gray-100 text-gray-500 cursor-not-allowed"
+                                        >
+                                          <option value="string">string</option>
+                                          <option value="number">number</option>
+                                          <option value="boolean">boolean</option>
+                                          <option value="object">object</option>
+                                          <option value="array">array</option>
+                                        </select>
+                                      </div>
+                                      <input
+                                        type="text"
+                                        value={parsed[key] !== undefined ? (typeof parsed[key] === 'string' ? parsed[key] : JSON.stringify(parsed[key])) : ''}
+                                        onChange={(e) => {
+                                          const newVal = e.target.value;
+                                          const newObj = { ...parsed, [key]: newVal };
+                                          updateLlmRow(i, 'description', JSON.stringify(newObj));
+                                        }}
+                                        className="flex-1 text-sm border-gray-300 rounded-md shadow-sm py-1 px-2 border"
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                value={row.description}
+                                onChange={(e) => updateLlmRow(i, 'description', e.target.value)}
+                                className="flex-1 text-sm border-gray-300 rounded-md shadow-sm py-1.5 px-2 border"
+                              />
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }
